@@ -2,12 +2,13 @@
 
 Tanpa ADB, tanpa root, tanpa PC. Tiga pack:
 
-1. ``CRVX_Turbo60_RP``  (resources) - definisi fog dipangkas + awan transparan
-   -> mengurangi fragmen alpha-blended yang harus digambar GPU Mali-G57.
+1. ``CRVX_Turbo60_RP``  (resources) - enam definisi fog global yang benar-benar
+   dipakai biome (bukan 73 file yang sebagian besar tidak berpengaruh) + awan
+   transparan -> mengurangi fragmen alpha-blended yang digambar GPU Mali-G57.
 2. ``CRVX_Turbo60_BP``  (data)      - fungsi ``/function crvx/*`` berisi preset
    gamerule + pembersihan entity -> beban CPU & block-update turun.
 3. ``CRVX_AutoGovernor_BP`` (data + script) - governor adaptif memakai
-   ``@minecraft/server`` 2.10.0 (stabil sejak Bedrock 26.50): mengukur tick-time
+   ``@minecraft/server`` 2.0.0: mengukur tick-time
    tiap 3 detik, menaikkan/menurunkan level hemat secara otomatis, dan
    menampilkan HUD di action bar. Tidak butuh Cheats, tidak mengunci achievement.
 
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import uuid
 import zipfile
@@ -28,8 +30,15 @@ from .texforge import texture_entries
 from . import blackhole, fogforge, foliage
 
 NAMESPACE = uuid.UUID("6f1c9a2e-4c7b-4d31-9c0a-2b7d5e8f1a40")
-SERVER_API = "2.10.0"          # rilis stabil di Bedrock 26.50 "Wilderness Bound"
-SERVER_UI_API = "2.2.0"        # rilis stabil 15 Sep 2026, bareng 26.50
+# v3.3: mendeklarasikan versi API TERBARU (2.10.0 / 2.2.0) membuat seluruh
+# skrip GAGAL MUAT di klien yang tidak punya versi persis itu di daftar
+# dukungannya - governor lalu mati total tanpa pesan apa pun. 2.0.0 adalah versi
+# stabil pertama yang didukung semua klien era 1.21+/26.x, dan seluruh API yang
+# dipakai pack ini (world, system, Dimension.runCommand, getEntities,
+# setActionBar, dynamic property, ActionFormData berbasis Promise) sudah ada
+# di sana. Jadi 2.0.0 = kompatibilitas maksimum tanpa kehilangan fitur.
+SERVER_API = "2.0.0"
+SERVER_UI_API = "2.0.0"
 MIN_ENGINE_RP = [1, 20, 0]
 MIN_ENGINE_BP = [1, 20, 0]
 MIN_ENGINE_SCRIPT = [1, 21, 0]
@@ -46,6 +55,14 @@ ENTITY_SAMPAH = [
     "splash_potion", "lingering_potion", "fishing_hook", "trident",
 ]
 
+# v3.3: mcfunction hanya boleh menyapu DUA jenis. Versi lama menaruh 10-31
+# perintah ``kill @e[...]`` dalam satu fungsi; tiap ``kill`` menyapu seluruh
+# daftar entity dan memicu simpan-chunk serentak, sehingga satu tick bisa
+# memuat 43 perintah berat - pada HP RAM 4 GB itu stutter berat sampai force
+# close. ENTITY_SAMPAH tetap ada, tapi dipakai JS sebagai ANTREAN sapuan
+# bertahap (1 jenis per sampel, jeda 8 detik), bukan diborong dalam satu tick.
+BERSIHKAN_INTI = ["item", "xp_orb"]
+
 FOOTER = ("# Nilai default Bedrock: randomtickspeed 1, sisanya true. "
           "Kembalikan kapan pun dengan /function crvx/pulihkan")
 
@@ -59,10 +76,9 @@ def _tell(text: str, color: str = "green") -> str:
 
 
 def _bersihkan_lines(agresif: bool = False) -> List[str]:
-    kinds = list(ENTITY_SAMPAH)
-    if agresif:
-        kinds += ["fireball", "small_fireball", "wither_skull", "llama_spit", "shulker_bullet"]
-    return [f"kill @e[type={kind}]" for kind in kinds]
+    """Dua sapuan saja - proyektil (panah, telur, dsb) lenyap sendiri ~60 dtk
+    dan jarang jadi sumber beban, jadi menyapunya hanya menambah spike tick."""
+    return [f"kill @e[type={kind}]" for kind in BERSIHKAN_INTI]
 
 
 def functions() -> Dict[str, List[str]]:
@@ -98,15 +114,23 @@ def functions() -> Dict[str, List[str]]:
               "Konsekuensi: tanaman tidak tumbuh, daun tidak gugur, es tidak mencair, "
               "api tidak menyebar & tidak padam sendiri.", "yellow"),
     ]
+    # v3.3: tidak lagi memanggil crvx/hemat (yang sudah menyapu) lalu menyapu
+    # lagi 15x - total kill dalam satu tick dibatasi dua.
     ganas = [
         "# CRVX GANAS - FPS maksimal, konsekuensi gameplay terbesar",
-        "function crvx/hemat",
+        "gamerule randomtickspeed 0",
+        "gamerule doweathercycle false",
+        "weather clear",
+        "gamerule doinsomnia false",
+        "gamerule mobgriefing false",
+        "gamerule dofiretick false",
+        "gamerule naturalregeneration true",
         "gamerule domobspawning false",
         "gamerule doentitydrops true",
         "gamerule dotiledrops true",
-    ] + _bersihkan_lines(agresif=True) + [
-        _tell("MODE GANAS aktif: spawning mob MATI total + semua proyektil dibersihkan. "
-              "Mob yang sudah ada tetap hidup. Kembali normal: /function crvx/pulihkan", "red"),
+        "function crvx/bersihkan",
+        _tell("MODE GANAS aktif: spawning mob MATI total + random tick 0. Mob yang "
+              "sudah ada tetap hidup. Kembali normal: /function crvx/pulihkan", "red"),
     ]
     pulihkan = [
         "# CRVX PULIHKAN - kembali persis ke default vanilla Bedrock",
@@ -222,35 +246,45 @@ def _tulis(root: str, rel: str, isi: str) -> None:
 def gov_functions() -> Dict[str, List[str]]:
     """mcfunction milik pack governor: SATU perintah per perubahan level.
 
-    Sebelumnya eskalasi mengirim ~10 runCommand sekaligus; pada HP lemah itu
-    berarti storm parse+eksekusi perintah tiap osilasi = stutter. Kini JS hanya
-    memanggil ``function gov/l<N>`` dan seluruh aksi ada di sini.
+    v3.3: isinya HANYA gamerule. Versi lama menaruh 31 perintah ``kill @e[...]``
+    di ``gov/l3`` (43 perintah total dalam satu tick) dan 12 di ``gov/l2``.
+    Pembersihan entity kini dilakukan JS secara bertahap.
+
+    Tidak ada mass-kill mob: level MAX mematikan ``domobspawning`` (sumber beban
+    CPU yang sesungguhnya) tanpa memusnahkan isi dunia pemain.
+
+    Catatan selector Bedrock: ``rm=`` (radius minimum) TIDAK ADA; yang tersedia
+    hanya ``r=`` (radius maksimum). Jadi "bunuh mob yang jauh saja" tidak bisa
+    ditulis dengan selector - versi lama memakai ``rm=40`` dan 19 barisnya gagal
+    tanpa efek apa pun.
     """
-    sampah = [f"kill @e[type={k}]" for k in ENTITY_SAMPAH]
-    jauh = [f"kill @e[type={t},rm=40]" for t in
-            ("zombie", "skeleton", "creeper", "spider", "cave_spider", "enderman",
-             "witch", "stray", "husk", "drowned", "phantom", "pillager", "vindicator",
-             "ravager", "blaze", "ghast", "zombie_pigman", "hoglin", "piglin")]
     l0 = ["gamerule randomtickspeed 1", "gamerule domobspawning true",
           "gamerule dofiretick true", "gamerule mobgriefing true",
-          "gamerule doinsomnia true"]
-    l1 = l0 + ["gamerule doweathercycle false", "weather clear",
-               "kill @e[type=item]", "kill @e[type=xp_orb]"]
-    l2 = l1 + ["gamerule randomtickspeed 0", "gamerule dofiretick false",
-               "gamerule doinsomnia false"] + sampah
-    l3 = l2 + ["gamerule mobgriefing false", "gamerule domobspawning false"] + jauh
+          "gamerule doinsomnia true", "gamerule doweathercycle true",
+          "gamerule naturalregeneration true"]
+    l1 = ["gamerule randomtickspeed 1", "gamerule domobspawning true",
+          "gamerule dofiretick true", "gamerule mobgriefing true",
+          "gamerule doinsomnia false", "gamerule doweathercycle false",
+          "weather clear", "gamerule naturalregeneration true"]
+    l2 = ["gamerule randomtickspeed 0", "gamerule domobspawning true",
+          "gamerule dofiretick false", "gamerule mobgriefing false",
+          "gamerule doinsomnia false", "gamerule doweathercycle false",
+          "weather clear", "gamerule naturalregeneration true"]
+    l3 = ["gamerule randomtickspeed 0", "gamerule domobspawning false",
+          "gamerule dofiretick false", "gamerule mobgriefing false",
+          "gamerule doinsomnia false", "gamerule doweathercycle false",
+          "weather clear", "gamerule naturalregeneration true"]
     dasar = ["gamerule doweathercycle false", "weather clear",
              "gamerule doinsomnia false", "gamerule mobgriefing false",
              "gamerule naturalregeneration true"]
     return {
         "l0": l0, "l1": l1, "l2": l2, "l3": l3,
         "profil_turbo": dasar + ["gamerule randomtickspeed 1",
-                                 "gamerule domobspawning true",
-                                 "kill @e[type=item]", "kill @e[type=xp_orb]"],
+                                 "gamerule dofiretick true",
+                                 "gamerule domobspawning true"],
         "profil_hemat": dasar + ["gamerule randomtickspeed 0",
                                  "gamerule dofiretick false",
-                                 "gamerule domobspawning true",
-                                 "kill @e[type=item]", "kill @e[type=xp_orb]"],
+                                 "gamerule domobspawning true"],
         "profil_ganas": dasar + ["gamerule randomtickspeed 0",
                                  "gamerule dofiretick false",
                                  "gamerule domobspawning false"],
@@ -258,7 +292,7 @@ def gov_functions() -> Dict[str, List[str]]:
     }
 
 
-def build_addon(out_path: str, version: Sequence[int] = (1, 2, 0),
+def build_addon(out_path: str, version: Sequence[int] = (1, 3, 0),
                 fog_strength: float = 0.35, governor: bool = True,
                 interval: int = 60, window: int = 6,
                 texture_res: int = 8) -> str:
@@ -449,9 +483,19 @@ def verify_addon(path: str) -> Dict[str, object]:
                     fog = [n for n in names if n.startswith(folder) and "/fogs/" in n]
                     if not fog:
                         problems.append(f"{folder}: resource pack tanpa definisi fog")
-                    if len(fog) < 60:
-                        problems.append(f"{folder}: hanya {len(fog)} file fog "
-                                        f"(vanilla punya 80 identifier)")
+                    # v3.3: yang penting BUKAN jumlahnya, tapi identifier global
+                    # yang benar-benar dipakai biome overworld ikut terkirim.
+                    global_wajib = {"default", "dry", "humid", "semi_humid"}
+                    punya = {os.path.basename(f).replace("_fog_setting.json", "")
+                             for f in fog}
+                    hilang = sorted(global_wajib - punya)
+                    if hilang:
+                        problems.append(f"{folder}: definisi fog global hilang: "
+                                        f"{', '.join(hilang)} (biome overworld tidak "
+                                        f"terpengaruh tanpa ini)")
+                    if len(fog) > 12:
+                        problems.append(f"{folder}: {len(fog)} file fog terlalu banyak "
+                                        f"(beban parsing saat dunia dimuat; cukup 6)")
                     for f in fog:
                         try:
                             doc = json.loads(zf.read(f).decode("utf-8"))
@@ -471,10 +515,25 @@ def verify_addon(path: str) -> Dict[str, object]:
                         dist = fs.get("distance") or {}
                         if not dist:
                             problems.append(f"{f}: distance kosong")
-                        for bahaya in ("lava", "lava_resistance", "powder_snow"):
-                            if bahaya in dist:
-                                problems.append(f"{f}: kunci {bahaya} tidak boleh "
-                                                f"ditimpa (merusak gameplay)")
+                        # v3.3 dibalik: blok lava HARUS ada (disalin verbatim
+                        # vanilla). Aturan lama "jangan ada lava" membuat seluruh
+                        # identifier global dilewati, sehingga fog tidak pernah
+                        # sampai ke overworld.
+                        if os.path.basename(f).startswith(("default_", "dry_",
+                                                          "humid_", "semi_humid_")):
+                            for wajib_lava in ("lava", "lava_resistance"):
+                                if wajib_lava not in dist:
+                                    problems.append(f"{f}: blok {wajib_lava} hilang - "
+                                                    f"fog lava vanilla ikut terhapus")
+                        for kunci, blok in dist.items():
+                            rdt = blok.get("render_distance_type")
+                            if rdt not in ("render", "fixed"):
+                                problems.append(f"{f}: {kunci}.render_distance_type "
+                                                f"'{rdt}' bukan 'render'/'fixed'")
+                            if not (0 <= blok.get("fog_start", -1) <
+                                    blok.get("fog_end", -1)):
+                                problems.append(f"{f}: {kunci} fog_start harus < "
+                                                f"fog_end dan >= 0")
                 if types[0] == "data":
                     funcs = [n for n in names if n.startswith(folder)
                              and n.endswith(".mcfunction")]
@@ -488,9 +547,17 @@ def verify_addon(path: str) -> Dict[str, object]:
                                     if l.strip() and not l.strip().startswith("#")]
                         if not perintah:
                             problems.append(f"{f}: tidak ada perintah")
+                        kill = [b for b in perintah if b.startswith("kill ")]
+                        if len(kill) > 2:
+                            problems.append(f"{f}: {len(kill)} perintah kill dalam satu "
+                                            f"fungsi = badai entity dalam satu tick "
+                                            f"(maks 2)")
                         for baris in perintah:
                             if baris.startswith("/"):
                                 problems.append(f"{f}: mcfunction tidak boleh diawali '/'")
+                            if re.search(r"\brm=", baris):
+                                problems.append(f"{f}: selector 'rm=' tidak ada di "
+                                                f"Bedrock (yang benar 'r='): {baris}")
                 result["packs"].append({"folder": folder, "name": header.get("name"),
                                         "types": types, "uuid": header.get("uuid")})
             if len(uuids) < 2:

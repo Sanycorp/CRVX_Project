@@ -430,21 +430,85 @@ class TestAddonForge(unittest.TestCase):
                 man = _json_load(zf.read("CRVX_AutoGovernor_BP/manifest.json"))
                 deps = man["dependencies"]
                 self.assertEqual(deps[0]["module_name"], "@minecraft/server")
-                self.assertEqual(deps[0]["version"], "2.10.0")
+                self.assertEqual(deps[0]["version"], "2.0.0",
+                                 "versi API terbaru membuat skrip gagal muat di "
+                                 "klien yang tidak mendukungnya persis")
+                self.assertEqual(deps[1]["version"], "2.0.0")
                 self.assertEqual(man["modules"][1]["type"], "script")
                 js = zf.read("CRVX_AutoGovernor_BP/scripts/main.js").decode("utf-8")
                 for wajib in ("import { world, system }", "system.runInterval",
                               "function gov/l", "function gov/profil_",
-                              "setActionBar", "chatSend",
+                              "setActionBar", "itemUse", "isSneaking",
+                              "scriptEventReceive", "tanganiArg",
                               "try {", "world.getDimension"):
                     self.assertIn(wajib, js)
                 self.assertEqual(js.count("import "), 2, "server + server-ui")
                 for wajib2 in ("ActionFormData", "@minecraft/server-ui",
                                "KP = ", "integral", "PANAS_NAIK",
                                "form.show", "setDynamicProperty",
-                               "KOOLDAUN", "function gov/l", "naikBeruntun"):
+                               "KOOLDAUN", "function gov/l", "naikBeruntun",
+                               # v3.3: pengaman anti force-close
+                               "ANGGARAN", "sapuBertahap", "TENANG_MUAT",
+                               "sekeringPutus", "v3.3"):
                     self.assertIn(wajib2, js)
                 self.assertNotIn("@@", js, "token template tidak boleh tersisa")
+                # chatSend TIDAK ADA di API stabil 2.x -> boleh disebut hanya
+                # sebagai feature-detect, tidak boleh dipakai langsung
+                self.assertNotIn("world.beforeEvents.chatSend.subscribe", js)
+                self.assertIn("typeof sinyalChat.subscribe", js,
+                              "chatSend hanya boleh dipakai lewat feature-detect")
+
+    def test_event_api_cocok_dengan_versi_yang_dideklarasikan(self):
+        """Regresi '!crvx mati diam-diam': skrip pernah berlangganan event yang
+        tidak ada di API stabil (world.beforeEvents.chatSend), TypeError-nya
+        ditelan try/catch, dan governor jadi tak terkendali. Anggota di bawah
+        disalin dari deklarasi tipe @minecraft/server 2.0.0 di npm."""
+        import re as _re, zipfile as _zip
+        API = {
+            "world.beforeEvents": {
+                "effectAdd", "entityRemove", "explosion", "itemUse",
+                "playerBreakBlock", "playerGameModeChange",
+                "playerInteractWithBlock", "playerInteractWithEntity",
+                "playerLeave", "weatherChange"},
+            "world.afterEvents": {
+                "blockExplode", "buttonPush", "dataDrivenEntityTrigger",
+                "effectAdd", "entityDie", "entityHealthChanged", "entityHitBlock",
+                "entityHitEntity", "entityHurt", "entityLoad", "entityRemove",
+                "entitySpawn", "explosion", "gameRuleChange", "itemCompleteUse",
+                "itemReleaseUse", "itemStartUse", "itemStartUseOn", "itemStopUse",
+                "itemStopUseOn", "itemUse", "leverAction", "pistonActivate",
+                "playerBreakBlock", "playerButtonInput", "playerDimensionChange",
+                "playerEmote", "playerGameModeChange", "playerInputModeChange",
+                "playerInputPermissionCategoryChange", "playerInteractWithBlock",
+                "playerInteractWithEntity", "playerJoin", "playerLeave",
+                "playerPlaceBlock", "playerSpawn", "pressurePlatePop",
+                "pressurePlatePush", "projectileHitBlock", "projectileHitEntity",
+                "targetBlockHit", "tripWireTrip", "weatherChange", "worldLoad"},
+            "system.afterEvents": {"scriptEventReceive"},
+        }
+        FEATURE_DETECT = {"chatSend"}     # hanya untuk klien 1.x, dijaga runtime
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.build(tmp)
+            with _zip.ZipFile(path) as zf:
+                js = zf.read("CRVX_AutoGovernor_BP/scripts/main.js").decode("utf-8")
+        # komentar kepala menyebut API lama sebagai penjelasan -> periksa kodenya saja
+        kode = "\n".join(l for l in js.splitlines()
+                         if not l.strip().startswith("//"))
+        dipakai = _re.findall(r"(world|system)\.(before|after)Events\.(\w+)", kode)
+        self.assertTrue(dipakai, "skrip tidak berlangganan event apa pun?")
+        for obj, grup, anggota in dipakai:
+            kunci = f"{obj}.{grup}Events"
+            if anggota in FEATURE_DETECT:
+                continue
+            self.assertIn(anggota, API[kunci],
+                          f"{kunci}.{anggota} tidak ada di API yang dideklarasikan "
+                          f"- akan TypeError diam-diam")
+        self.assertIn("itemUse", {a for _, _, a in dipakai},
+                      "gestur jongkok+pakai item adalah satu-satunya kontrol "
+                      "tanpa Cheats")
+        # Entity.isPlayer() juga tidak ada di 2.0.0 -> harus pakai typeId
+        self.assertNotIn("isPlayer", kode)
+        self.assertIn("typeId", kode)
 
     def test_rp_berisi_fog_skema_benar_dan_awan_transparan(self):
         import zipfile as _zip
@@ -456,7 +520,15 @@ class TestAddonForge(unittest.TestCase):
                 self.assertNotIn(255, list(awan[-400:]), "awan harus transparan penuh")
                 fogs = [n for n in zf.namelist()
                         if n.startswith("CRVX_Turbo60_RP/fogs/")]
-                self.assertGreaterEqual(len(fogs), 60)
+                self.assertEqual(len(fogs), 6,
+                                 "73 file = beban parsing saat dunia dimuat, dan "
+                                 "sebagian besar tidak menyentuh overworld")
+                punya = {n.rsplit("/", 1)[-1].replace("_fog_setting.json", "")
+                         for n in fogs}
+                for wajib in ("default", "dry", "humid", "semi_humid", "hell",
+                              "the_end"):
+                    self.assertIn(wajib, punya,
+                                  f"fog global '{wajib}' wajib ikut terkirim")
                 for f in fogs[:12]:
                     doc = _json_load(zf.read(f))
                     self.assertIn("minecraft:fog_settings", doc,
@@ -465,8 +537,71 @@ class TestAddonForge(unittest.TestCase):
                     self.assertTrue(
                         fs["description"]["identifier"].startswith("minecraft:fog_"))
                     self.assertTrue(fs["distance"], "distance tidak boleh kosong")
-                    for bahaya in ("lava", "lava_resistance", "powder_snow"):
-                        self.assertNotIn(bahaya, fs["distance"])
+                    for kunci, blok in fs["distance"].items():
+                        self.assertIn(blok.get("render_distance_type"),
+                                      ("render", "fixed"), f"{f}:{kunci}")
+                        self.assertLess(blok["fog_start"], blok["fog_end"], f"{f}:{kunci}")
+                    nama = f.rsplit("/", 1)[-1]
+                    if nama.startswith(("default_", "dry_", "humid_",
+                                        "semi_humid_")):
+                        # aturan lama melarang blok lava -> seluruh identifier
+                        # global dilewati dan fog tak pernah sampai ke overworld
+                        self.assertIn("lava", fs["distance"], f"{f}: lava hilang")
+                        self.assertIn("lava_resistance", fs["distance"], f)
+                        self.assertIn("transition_fog", fs["distance"]["water"],
+                                      "transisi air vanilla harus disalin utuh")
+
+
+class TestAntiBadaiPerintah(unittest.TestCase):
+    """Regresi force-close: satu tick tidak boleh memuat lusinan `kill @e[...]`."""
+
+    def test_tidak_ada_fungsi_dengan_lebih_dua_kill(self):
+        from crvx.addonforge import functions, gov_functions
+        for nama, baris in {**functions(), **{f"gov/{k}": v
+                                             for k, v in gov_functions().items()}}.items():
+            kill = [b for b in baris if b.startswith("kill ")]
+            self.assertLessEqual(len(kill), 2,
+                                 f"{nama}: {len(kill)} kill = badai dalam satu tick")
+            self.assertLessEqual(len(baris), 14,
+                                 f"{nama}: {len(baris)} perintah sekaligus terlalu berat")
+
+    def test_selector_bedrock_valid(self):
+        from crvx.addonforge import functions, gov_functions
+        for nama, baris in {**functions(), **gov_functions()}.items():
+            for baris in baris:
+                self.assertNotIn("rm=", baris,
+                                 f"{nama}: 'rm=' tidak ada di Bedrock (benar 'r=')")
+                self.assertFalse(baris.startswith("/"), nama)
+
+    def test_level_max_tidak_memusnahkan_mob(self):
+        from crvx.addonforge import gov_functions
+        l3 = " ".join(gov_functions()["l3"])
+        self.assertIn("domobspawning false", l3)
+        for jenis in ("zombie", "creeper", "skeleton", "piglin", "enderman"):
+            self.assertNotIn(jenis, l3,
+                             "level MAX mematikan spawning, bukan memusnahkan "
+                             "mob dunia pemain")
+
+    def test_verifier_menolak_badai_kill(self):
+        import zipfile as _zip
+        from crvx.addonforge import build_addon, verify_addon
+        with tempfile.TemporaryDirectory() as tmp:
+            src = build_addon(os.path.join(tmp, "sumber.mcaddon"))
+            rusak = os.path.join(tmp, "rusak.mcaddon")
+            with _zip.ZipFile(src) as zin, _zip.ZipFile(rusak, "w") as zout:
+                for item in zin.infolist():
+                    data = zin.read(item.filename)
+                    if item.filename.endswith("gov/l3.mcfunction"):
+                        data = ("\n".join([f"kill @e[type=item{i}]"
+                                            for i in range(12)])).encode("utf-8")
+                    if item.filename.endswith("crvx/bersihkan.mcfunction"):
+                        data = b"kill @e[type=zombie,rm=40]\n"
+                    zout.writestr(item, data)
+            hasil = verify_addon(rusak)
+            self.assertFalse(hasil["ok"])
+            teks = " ".join(hasil["problems"])
+            self.assertIn("badai", teks)
+            self.assertIn("rm=", teks)
 
 
 class TestFogForge(unittest.TestCase):
@@ -476,15 +611,45 @@ class TestFogForge(unittest.TestCase):
         from crvx import fogforge
         cakup = fogforge.coverage()
         self.assertEqual(cakup["total"], 80)
-        self.assertGreaterEqual(cakup["ditimpa"], 70)
-        self.assertIn("minecraft:fog_default", fogforge.skipped(),
-                      "fog default punya lava -> wajib dilewati")
-        for ident, doc in fogforge.fog_files().items():
+        self.assertEqual(cakup["ditimpa"], 6)
+        self.assertNotIn("minecraft:fog_default", fogforge.skipped(),
+                         "fog_default justru yang paling menentukan tampilan "
+                         "overworld - wajib ditimpa, bukan dilewati")
+        for ident in fogforge.TARGETS:
+            doc = fogforge.fog_definition(ident)
             self.assertEqual(set(doc.keys()), {"format_version", "minecraft:fog_settings"})
+            self.assertIn(doc["format_version"], ("1.16.100", "1.21.90"))
             fs = doc["minecraft:fog_settings"]
-            self.assertTrue(fs["description"]["identifier"].startswith("minecraft:fog_"))
-            for bahaya in ("lava", "lava_resistance", "powder_snow"):
-                self.assertNotIn(bahaya, fs["distance"])
+            self.assertEqual(fs["description"]["identifier"], ident)
+            self.assertIn("air", fs["distance"], "tanpa blok air fog tidak berguna")
+        self.assertEqual(sorted(fogforge.fog_files()), [
+            "fogs/default_fog_setting.json", "fogs/dry_fog_setting.json",
+            "fogs/hell_fog_setting.json", "fogs/humid_fog_setting.json",
+            "fogs/semi_humid_fog_setting.json", "fogs/the_end_fog_setting.json"])
+        # format_version harus cocok dengan vanilla per identifier
+        self.assertEqual(fogforge.fog_definition("minecraft:fog_default")["format_version"],
+                         "1.16.100")
+        self.assertEqual(fogforge.fog_definition("minecraft:fog_dry")["format_version"],
+                         "1.21.90")
+        self.assertEqual(fogforge.fog_definition("minecraft:fog_hell")["format_version"],
+                         "1.16.100")
+        # nether: air/weather vanilla bertipe fixed (meter), bukan render
+        hell = fogforge.fog_definition("minecraft:fog_hell")["minecraft:fog_settings"]
+        self.assertEqual(hell["distance"]["air"]["render_distance_type"], "fixed")
+
+    def test_densitas_mengubah_jarak_bukan_warna(self):
+        from crvx import fogforge
+        ringan = fogforge.fog_definition("minecraft:fog_default", 0.15)
+        pekat = fogforge.fog_definition("minecraft:fog_default", 0.85)
+        r = ringan["minecraft:fog_settings"]["distance"]
+        k = pekat["minecraft:fog_settings"]["distance"]
+        self.assertLess(k["air"]["fog_start"], r["air"]["fog_start"],
+                        "densitas lebih tinggi -> kabut mulai lebih dekat")
+        self.assertEqual(r["air"]["fog_color"], "#ABD2FF",
+                         "warna udara vanilla tidak boleh diubah")
+        self.assertEqual(r["water"], k["water"], "blok air harus verbatim vanilla")
+        self.assertEqual(r["lava"], k["lava"], "blok lava harus verbatim vanilla")
+        self.assertEqual(r["lava"]["fog_end"], 0.64)
 
     def test_identifier_tidak_ditebak_dari_namafile(self):
         from crvx import fogforge
@@ -543,12 +708,23 @@ class TestBlackHole(unittest.TestCase):
                      "profil_hemat", "profil_ganas", "afk"):
             self.assertIn(nama, f)
             self.assertTrue(f[nama], f"{nama} kosong")
-        # eskalasi kumulatif & idempoten
-        self.assertTrue(set(f["l1"]).issuperset(set(f["l0"]) - {"gamerule dofiretick true"}))
+        # v3.3: tiap level MANDIRI - menyetel sendiri semua gamerule yang relevan,
+        # jadi satu `function gov/l<N>` cukup dan tidak ada sisa state level
+        # sebelumnya. Versi lama menumpuk: l3 = l2 + 31 perintah kill.
+        def nama_rule(baris):
+            return {b.split()[1] for b in baris
+                    if b.startswith("gamerule") and len(b.split()) > 2}
+        for atas, bawah in (("l1", "l0"), ("l2", "l1"), ("l3", "l2")):
+            self.assertTrue(nama_rule(f[bawah]) <= nama_rule(f[atas]),
+                            f"{atas} wajib menyetel ulang semua yang disetel {bawah}")
         self.assertIn("gamerule randomtickspeed 0", f["l2"])
         self.assertIn("gamerule domobspawning false", f["l3"])
-        for baris in f["l3"]:
-            self.assertFalse(baris.startswith("/"))
+        for nama, baris in f.items():
+            for b in baris:
+                self.assertFalse(b.startswith("/"), nama)
+                self.assertFalse(b.startswith("kill "),
+                                 f"{nama}: sapuan entity harus bertahap lewat JS, "
+                                 f"bukan diborong dalam satu tick")
 
     def test_enam_ikon_tombol(self):
         from crvx import blackhole

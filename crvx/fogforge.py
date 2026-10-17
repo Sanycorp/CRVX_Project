@@ -1,83 +1,133 @@
-"""FogForge - 80 definisi fog Bedrock dengan skema yang BENAR.
+"""FogForge v3.3 - enam definisi fog yang benar-benar dipakai biome.
 
-Skema diverifikasi langsung dari Mojang/bedrock-samples (Okt 2026). Setiap file
-fog vanilla berbentuk:
+SEJARAH (kenapa file ini ditulis ulang setelah laporan force-close):
 
-    {
-      "format_version": "1.21.90",
-      "minecraft:fog_settings": {
-        "description": {"identifier": "minecraft:fog_forest"},
-        "distance": {"water": {...}}
-      }
-    }
+Versi lama mengirim 73 file fog. Audit menemukan dua cacat sekaligus:
 
-SATU definisi per file, ``minecraft:fog_settings`` di level atas. Tidak ada
-array ``fog_definitions`` di mana pun dalam vanilla - format itu tidak dibaca
-game, jadi pack yang memakainya tidak melakukan apa-apa.
+1. **Salah sasaran.** Empat identifier global yang dipakai mayoritas biome
+   overworld - ``minecraft:fog_default``, ``fog_dry``, ``fog_humid``,
+   ``fog_semi_humid`` - justru TIDAK terkirim, karena versi lama memakai
+   aturan "lewati identifier yang punya blok lava" agar fog lava tidak rusak.
+   Yang terkirim malah nether/end/goa. Jadi biaya parsing 73 JSON saat dunia
+   dimuat itu nyata, sementara manfaat visualnya di overworld nyaris nol.
 
-Fakta yang dikumpulkan dari 80 file vanilla (tersimpan di data/fog_index.json):
-    65x distance = [water]
-     7x distance = [air, water, weather]
-     6x distance = [air, lava, lava_resistance, water, weather]
-     1x distance = [air, water]
-     1x distance = [powder_snow]
-     format_version: 50x 1.21.90, 30x 1.16.100
-     2 identifier tidak sama dengan nama file (mega_spruce_taiga_mutated,
-       sulfur_caves) - karena itu identifier tidak boleh ditebak dari nama file.
+2. **Boros saat muat dunia.** 73 dokumen fog dibaca dan diregistrasi setiap
+   kali dunia dimuat. Di perangkat RAM 4 GB itu beban yang tidak perlu untuk
+   fitur yang murni kosmetik.
 
-Keputusan keselamatan: identifier yang punya kunci ``lava``, ``lava_resistance``,
-atau ``powder_snow`` TIDAK ditimpa. Menimpa tanpa kunci itu akan menghapus fog
-lava/salju-bubuk vanilla dan merusak pengalaman bermain. 73 dari 80 ditimpa.
+Perbaikan v3.3: hanya enam identifier yang menentukan tampilan sebagian besar
+dunia (empat global overworld + nether + end), dan **setiap blok vanilla
+disalin verbatim** - termasuk ``lava``, ``lava_resistance``, ``transition_fog``,
+dan ``fog_color`` - sehingga tidak ada satu pun tampilan vanilla yang hilang.
+Yang disetel hanya jarak ``air``/``weather``.
+
+Bentuk dokumen diverifikasi langsung dari Mojang/bedrock-samples (Okt 2026):
+SATU definisi per file, ``minecraft:fog_settings`` di level atas, tanpa array
+``fog_definitions`` (format itu tidak dibaca game). ``render_distance_type``
+hanya boleh ``"render"`` (kelipatan render distance) atau ``"fixed"`` (blok).
 
 Catatan jujur: fog TIDAK mengurangi beban GPU secara berarti - fog hanyalah
-lerp murah per fragmen, geometri tetap digambar. Nilai fog di sini adalah
-**menyamarkan render distance rendah** supaya batas chunk tidak terlihat, yang
-memungkinkan kamu menurunkan Render Distance (tuas performa yang sesungguhnya)
-tanpa mengorbankan tampilan.
+lerp murah per fragmen, geometri tetap digambar. Nilainya adalah **menyamarkan
+batas chunk** supaya Render Distance bisa diturunkan (tuas performa yang
+sesungguhnya) tanpa dunia terlihat terpotong.
 """
 
 from __future__ import annotations
 
 import json
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 INDEX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "data", "fog_index.json")
 
-# kunci yang tidak boleh disentuh - nilainya spesifik gameplay
-SKIP_KEYS = {"lava", "lava_resistance", "powder_snow"}
+# Enam identifier yang menentukan tampilan sebagian besar dunia. Nilai blok
+# air/lava/lava_resistance/warna disalin verbatim dari vanilla; hanya jarak
+# air/weather yang disetel oleh ``density``.
+VERBATIM = {
+    "minecraft:fog_default": {
+        "file": "default", "format_version": "1.16.100",
+        "air": {"fog_color": "#ABD2FF", "render_distance_type": "render",
+                "vanilla": (0.92, 1.0)},
+        "weather": {"fog_color": "#666666", "render_distance_type": "render",
+                    "vanilla": (0.23, 0.7)},
+        "water": {"fog_start": 0.0, "fog_end": 60.0, "fog_color": "#44AFF5",
+                  "render_distance_type": "fixed", "transition_fog": True},
+        "lava": {"fog_start": 0.0, "fog_end": 0.64, "fog_color": "#991A00",
+                 "render_distance_type": "fixed"},
+        "lava_resistance": {"fog_start": 2.0, "fog_end": 4.0,
+                            "fog_color": "#991A00",
+                            "render_distance_type": "fixed"},
+    },
+    "minecraft:fog_dry": {
+        "file": "dry", "format_version": "1.21.90",
+        "air": {"fog_color": "#ABD2FF", "render_distance_type": "render",
+                "vanilla": (0.92, 1.0)},
+        "weather": {"fog_color": "#666666", "render_distance_type": "render",
+                    "vanilla": (0.23, 0.7)},
+        "water": {"fog_start": 0.0, "fog_end": 60.0, "fog_color": "#44AFF5",
+                  "render_distance_type": "fixed", "transition_fog": True},
+        "lava": {"fog_start": 0.0, "fog_end": 0.64, "fog_color": "#991A00",
+                 "render_distance_type": "fixed"},
+        "lava_resistance": {"fog_start": 2.0, "fog_end": 4.0,
+                            "fog_color": "#991A00",
+                            "render_distance_type": "fixed"},
+    },
+    "minecraft:fog_humid": {
+        "file": "humid", "format_version": "1.21.90",
+        "air": {"fog_color": "#ABD2FF", "render_distance_type": "render",
+                "vanilla": (0.92, 1.0)},
+        "weather": {"fog_color": "#666666", "render_distance_type": "render",
+                    "vanilla": (0.23, 0.7)},
+        "water": {"fog_start": 0.0, "fog_end": 60.0, "fog_color": "#44AFF5",
+                  "render_distance_type": "fixed", "transition_fog": True},
+        "lava": {"fog_start": 0.0, "fog_end": 0.64, "fog_color": "#991A00",
+                 "render_distance_type": "fixed"},
+        "lava_resistance": {"fog_start": 2.0, "fog_end": 4.0,
+                            "fog_color": "#991A00",
+                            "render_distance_type": "fixed"},
+    },
+    "minecraft:fog_semi_humid": {
+        "file": "semi_humid", "format_version": "1.21.90",
+        "air": {"fog_color": "#ABD2FF", "render_distance_type": "render",
+                "vanilla": (0.92, 1.0)},
+        "weather": {"fog_color": "#666666", "render_distance_type": "render",
+                    "vanilla": (0.23, 0.7)},
+        "water": {"fog_start": 0.0, "fog_end": 60.0, "fog_color": "#44AFF5",
+                  "render_distance_type": "fixed", "transition_fog": True},
+        "lava": {"fog_start": 0.0, "fog_end": 0.64, "fog_color": "#991A00",
+                 "render_distance_type": "fixed"},
+        "lava_resistance": {"fog_start": 2.0, "fog_end": 4.0,
+                            "fog_color": "#991A00",
+                            "render_distance_type": "fixed"},
+    },
+    # nether: air & weather vanilla bertipe "fixed" (meter, bukan render distance)
+    "minecraft:fog_hell": {
+        "file": "hell", "format_version": "1.16.100",
+        "air": {"fog_color": "#330808", "render_distance_type": "fixed",
+                "vanilla": (10.0, 96.0)},
+        "weather": {"fog_color": "#330808", "render_distance_type": "fixed",
+                    "vanilla": (10.0, 96.0)},
+        "water": {"fog_start": 0.0, "fog_end": 15.0, "fog_color": "#905957",
+                  "render_distance_type": "fixed", "transition_fog": True},
+    },
+    "minecraft:fog_the_end": {
+        "file": "the_end", "format_version": "1.21.90",
+        "air": {"fog_color": "#0B080C", "render_distance_type": "render",
+                "vanilla": (0.92, 1.0)},
+        "water": {"fog_start": 0.0, "fog_end": 15.0, "fog_color": "#62529e",
+                  "render_distance_type": "fixed", "transition_fog": True},
+    },
+}
 
-# palet warna air karangan sendiri per keluarga bioma (bukan data Mojang)
-WATER_PALETTE: Tuple[Tuple[str, Tuple[str, str]], ...] = (
-    ("ocean", ("#1B6FA8", "#0E4C7A")),
-    ("river", ("#2A7FB8", "#155C8A")),
-    ("swamp", ("#4A5D32", "#2E3D1F")),
-    ("mangrove", ("#4A5D32", "#2E3D1F")),
-    ("mesa", ("#8A6A4A", "#5E4630")),
-    ("desert", ("#4FA3C7", "#2E7A9C")),
-    ("ice", ("#7FB6D8", "#4E87AC")),
-    ("frozen", ("#7FB6D8", "#4E87AC")),
-    ("cold", ("#3E7FA8", "#255C7E")),
-    ("jungle", ("#2E8B6A", "#1A5E45")),
-    ("bamboo", ("#2E8B6A", "#1A5E45")),
-    ("forest", ("#2C7FA0", "#18556F")),
-    ("taiga", ("#2F6E86", "#1B4A5C")),
-    ("savanna", ("#4E9AA8", "#2E6C79")),
-    ("plains", ("#3D8FB8", "#246486")),
-    ("beach", ("#37A0C4", "#1F7391")),
-    ("mushroom", ("#7A5FA8", "#4E3A72")),
-    ("hell", ("#8A2A1A", "#54150C")),
-    ("crimson", ("#8A2A3A", "#54151F")),
-    ("warped", ("#1E6E7A", "#0F454E")),
-    ("soulsand", ("#4A4038", "#2C2620")),
-    ("basalt", ("#4A4A52", "#2C2C33")),
-    ("end", ("#2A1E4A", "#170F2C")),
-    ("cave", ("#2E4A5A", "#1A2E3A")),
-    ("cherry", ("#4E86B8", "#2E5C86")),
-    ("pale", ("#5A6A78", "#38444E")),
-)
-WATER_DEFAULT = ("#2A7FA8", "#155C7E")
+# transisi masuk-keluar air, identik di semua file vanilla yang memakainya
+_TRANSITION_PCT = {"min_percent": 0.25, "mid_seconds": 5,
+                   "mid_percent": 0.6, "max_seconds": 30}
+
+TARGETS: List[str] = [
+    "minecraft:fog_default", "minecraft:fog_dry", "minecraft:fog_humid",
+    "minecraft:fog_semi_humid", "minecraft:fog_hell", "minecraft:fog_the_end",
+]
 
 
 def load_index() -> Dict[str, Dict[str, object]]:
@@ -86,91 +136,74 @@ def load_index() -> Dict[str, Dict[str, object]]:
         return json.load(fh)
 
 
-def water_color(identifier: str) -> Tuple[str, str]:
-    name = identifier.replace("minecraft:fog_", "")
-    for kunci, warna in WATER_PALETTE:
-        if kunci in name:
-            return warna
-    return WATER_DEFAULT
+def _transition(warna: str, end: float) -> Dict[str, object]:
+    return {"init_fog": {"fog_start": 0.0, "fog_end": 0.01,
+                         "fog_color": warna, "render_distance_type": "fixed"},
+            **_TRANSITION_PCT}
 
 
-def _mix(hex_a: str, hex_b: str, t: float) -> str:
-    a = [int(hex_a[i:i + 2], 16) for i in (1, 3, 5)]
-    b = [int(hex_b[i:i + 2], 16) for i in (1, 3, 5)]
-    out = [int(round(a[i] + (b[i] - a[i]) * t)) for i in range(3)]
-    return "#" + "".join(f"{max(0, min(255, v)):02X}" for v in out)
-
-
-def air_fog(density: float, tint: str) -> Dict[str, object]:
-    """Fog udara sebagai penyamar batas chunk. ``density`` 0..1."""
+def tuned(blok: Dict[str, object], density: float) -> Dict[str, object]:
+    """Jarak air/weather yang disetel, warna & tipe tetap verbatim vanilla."""
     density = max(0.0, min(1.0, density))
-    start = round(0.92 - 0.58 * density, 3)
-    end = round(min(1.0, start + 0.42 + 0.10 * density), 3)
-    return {"fog_start": start, "fog_end": end, "fog_color": tint,
-            "render_distance_type": "render"}
+    warna = blok["fog_color"]
+    tipe = blok["render_distance_type"]
+    v_start, v_end = blok["vanilla"]
+    if tipe == "render":
+        # udara: kabut mulai lebih dekat -> batas chunk tersamar
+        start = round(v_start - 0.30 * density, 3)
+        end = round(max(start + 0.05, v_end - 0.12 * density), 3)
+    else:
+        # nether: satuan blok, diperpendek sebanding density
+        start = v_start
+        end = round(max(start + 4.0, v_end - 36.0 * density), 1)
+    return {"fog_start": start, "fog_end": end, "fog_color": warna,
+            "render_distance_type": tipe}
 
 
-def weather_fog(density: float, tint: str) -> Dict[str, object]:
-    density = max(0.0, min(1.0, density))
-    start = round(0.80 - 0.55 * density, 3)
-    end = round(min(1.0, start + 0.35 + 0.10 * density), 3)
-    return {"fog_start": start, "fog_end": end, "fog_color": tint,
-            "render_distance_type": "render"}
+def water_fog(identifier: str) -> Dict[str, object]:
+    """Blok air verbatim vanilla (tidak disetel - murni kosmetik)."""
+    src = dict(VERBATIM[identifier]["water"])
+    pakai_transisi = src.pop("transition_fog", False)
+    if pakai_transisi:
+        src["transition_fog"] = _transition(src["fog_color"], src["fog_end"])
+    return src
 
 
-def water_fog(density: float, identifier: str) -> Dict[str, object]:
-    dekat, jauh = water_color(identifier)
-    end = round(max(12.0, 60.0 - 34.0 * density), 2)
-    return {"fog_start": 0.0, "fog_end": end,
-            "fog_color": _mix(dekat, jauh, density),
-            "render_distance_type": "fixed"}
-
-
-def fog_definition(identifier: str, distance_keys: List[str],
-                   density: float = 0.55) -> Optional[Dict[str, object]]:
-    """Satu dokumen fog. ``None`` bila identifier sengaja tidak ditimpa."""
-    if SKIP_KEYS.intersection(distance_keys):
+def fog_definition(identifier: str,
+                   density: float = 0.35) -> Optional[Dict[str, object]]:
+    """Satu dokumen fog, atau ``None`` bila identifier bukan target."""
+    spec = VERBATIM.get(identifier)
+    if spec is None:
         return None
-    tint_far, tint_near = water_color(identifier)
-    tint = _mix(tint_far, "#0B1220", 0.35 + 0.3 * density)
     distance: Dict[str, object] = {}
-    for key in distance_keys:
-        if key == "air":
-            distance["air"] = air_fog(density, tint)
-        elif key == "weather":
-            distance["weather"] = weather_fog(density, tint)
-        elif key == "water":
-            distance["water"] = water_fog(density, identifier)
-    if not distance:
-        # bioma yang vanilla-nya cuma punya air/water: tambahkan air supaya
-        # penyamaran batas chunk berlaku juga di bioma itu
-        distance["air"] = air_fog(density, tint)
-        if "water" in distance_keys:
-            distance["water"] = water_fog(density, identifier)
-    return {
-        "format_version": "1.21.90",
-        "minecraft:fog_settings": {
-            "description": {"identifier": identifier},
-            "distance": distance,
-        },
-    }
+    for key in ("air", "weather"):
+        if key in spec:
+            distance[key] = tuned(spec[key], density)
+    if "water" in spec:
+        distance["water"] = water_fog(identifier)
+    for key in ("lava", "lava_resistance"):
+        if key in spec:
+            distance[key] = dict(spec[key])
+    return {"format_version": spec["format_version"],
+            "minecraft:fog_settings": {
+                "description": {"identifier": identifier},
+                "distance": distance}}
 
 
-def fog_files(density: float = 0.55) -> Dict[str, Dict[str, object]]:
-    """relpath dalam resource pack -> dokumen fog, untuk seluruh identifier."""
+def fog_files(density: float = 0.35) -> Dict[str, Dict[str, object]]:
+    """relpath dalam resource pack -> dokumen fog (enam identifier target)."""
     out: Dict[str, Dict[str, object]] = {}
-    for identifier, meta in sorted(load_index().items()):
-        doc = fog_definition(identifier, list(meta.get("distance", [])), density)
+    for identifier in TARGETS:
+        doc = fog_definition(identifier, density)
         if doc is None:
             continue
-        out[f"fogs/{meta['file']}_fog_setting.json"] = doc
+        out[f"fogs/{VERBATIM[identifier]['file']}_fog_setting.json"] = doc
     return out
 
 
 def skipped() -> List[str]:
-    """Identifier yang sengaja tidak ditimpa (punya lava/powder_snow)."""
-    return sorted(i for i, m in load_index().items()
-                  if SKIP_KEYS.intersection(set(m.get("distance", []))))
+    """Identifier vanilla yang tidak ditimpa di luar enam target."""
+    return sorted(set(load_index()) - set(VERBATIM))
 
 
 def coverage() -> Dict[str, int]:
