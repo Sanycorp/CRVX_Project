@@ -41,7 +41,21 @@ python3 -m crvx undo                   # kembalikan semuanya
 | --- | --- | --- |
 | `CRVX Turbo60 - Visual Saver` (RP) | 16 definisi fog dipangkas + `clouds.png` transparan + `rain.png` 88% transparan | fragmen alpha-blended turun → GPU lega, HP lebih dingin |
 | `CRVX Turbo60 - Preset Performa` (BP) | `/function crvx/turbo60` · `hemat` · `ganas` · `bersihkan` · `status` · `pulihkan` | gamerule + pembersihan entity → beban CPU & block-update turun |
-| `CRVX AutoGovernor - Adaptif` (BP + Script API `@minecraft/server` 2.10.0) |ukur tick-time tiap 3 detik, 4 level hemat, hysteresis, HUD action bar, kontrol chat `!crvx status|mati|nyala|hud|reset` | menyesuaikan diri otomatis saat dunia berat — **tanpa Cheats, achievement tidak terkunci** |
+| `CRVX AutoGovernor - Adaptif` v2 (BP + Script API `@minecraft/server` 2.10.0) |ukur tick-time tiap 3 detik, 4 level hemat, hysteresis, HUD action bar, kontrol chat `!crvx status|mati|nyala|hud|reset` | menyesuaikan diri otomatis saat dunia berat — **tanpa Cheats, achievement tidak terkunci** |
+
+### Tekstur
+
+| Perintah | Hasil |
+| --- | --- |
+| `python3 -m crvx texture --res 8` | `addon/CRVX_FastTex_8x.mcpack` - tekstur **buatan sendiri** 8x8 (kaca, es, daun alpha-test) + awan transparan + `weather.png` nyaris tak terlihat + fog cut. Sah dibagikan karena tidak memakai aset Mojang. |
+| `python3 -m crvx texforge --vanilla <folder/zip/apk> --res 8` | pack 8x8 dari **aset vanilla milikmu sendiri** (hasil ekstrak APK). Tampilan tetap seperti Minecraft asli, bandwidth tekstur tinggal seperempat. Strip animasi (mis. `water_still.png` 16x512) otomatis dilewati supaya animasi tidak rusak. |
+
+`crvx/texforge.py` berisi decoder PNG murni stdlib (color type 0/2/3/4/6, filter 0-4)
++ box-filter downscale + encoder PNG. Tidak ada dependensi eksternal.
+
+Nama berkas & dimensi tekstur diverifikasi terhadap `Mojang/bedrock-samples` (Okt 2026):
+`clouds.png` 256x256, `weather.png` 32x32 (bukan `rain.png`), `glass.png` / `ice.png` /
+`leaves_*_opaque.png` 16x16, `water_still.png` 16x512.
 
 Pasang: kirim `.mcaddon` ke HP → buka → Minecraft mengimpornya otomatis →
 **Play → ✏️ dunia → Resource Packs & Behavior Packs → Activate** (aktifkan ketiganya).

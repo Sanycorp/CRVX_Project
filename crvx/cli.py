@@ -20,6 +20,8 @@ from .models import Device, Plan
 from .modes import all_modes, get_mode
 from .packforge import build_fogcut_pack, verify_pack
 from .addonforge import build_addon, verify_addon
+from .packforge import build_fogcut_pack as _fogcut  # noqa: F401
+from .texforge import build_texture_pack, build_downscaled_pack
 from .planner import BACKUP_DIR, CRVX_HOME, Journal, Planner
 from . import generators
 
@@ -425,6 +427,52 @@ def _write(path: str, text: str) -> None:
         os.chmod(path, 0o755)
 
 
+def cmd_texture(args: argparse.Namespace) -> int:
+    path = args.out or os.path.join(CRVX_HOME, "addon", f"CRVX_FastTex_{args.res}x.mcpack")
+    build_texture_pack(path, res=args.res, fog_strength=args.strength)
+    result = verify_pack(path)
+    head("TEXFORGE")
+    if result["ok"]:
+        ok(f"{path} ({result['size_bytes']} bytes, {len(result['entries'])} entri)")
+        for entry in result["entries"]:
+            dim(f"  - {entry}")
+    else:
+        bad("pack tidak valid:")
+        for problem in result["problems"]:
+            print(f"     {problem}")
+        return 1
+    print()
+    dim(f"Tekstur {args.res}x{args.res} buatan sendiri: kaca, es, daun (alpha-test),")
+    dim("awan transparan, cuaca nyaris tak terlihat + 16 fog dipangkas.")
+    return 0
+
+
+def cmd_texforge(args: argparse.Namespace) -> int:
+    path = args.out or os.path.join(CRVX_HOME, "addon", f"CRVX_{args.res}x_vanilla.mcpack")
+    head("TEXFORGE - DOWNSCALE ASET VANILLA")
+    dim(f"sumber : {args.vanilla}")
+    stats = build_downscaled_pack(args.vanilla, path, target=args.res)
+    if stats["converted"]:
+        ok(f"{path} ({stats['size_bytes']} bytes)")
+        ok(f"{stats['converted']} tekstur diturunkan ke {args.res}px")
+        dim(f"  dipertahankan apa adanya : {stats['kept'] - stats['converted']}")
+        dim(f"  dilewati (strip animasi) : {stats['skipped_animated']}")
+        dim(f"  dilewati (sudah kecil)   : {stats['skipped_small']}")
+        dim(f"  gagal decode             : {stats['skipped_error']}")
+        dim(f"  atlas JSON disalin       : {len(stats['atlas'])}")
+        hemat = stats["bytes_before"] - stats["bytes_after"]
+        if stats["bytes_before"]:
+            pct = 100.0 * hemat / stats["bytes_before"]
+            dim(f"  ukuran tekstur {stats['bytes_before']} -> {stats['bytes_after']} B ({pct:.0f}% lebih kecil)")
+        print()
+        dim("Pasang: kirim .mcpack ke HP -> buka -> Settings > Global Resources > Activate.")
+        return 0
+    bad("tidak ada tekstur yang bisa diturunkan - periksa path sumber")
+    for err in stats["errors"][:10]:
+        dim(f"  {err}")
+    return 1
+
+
 def cmd_addon(args: argparse.Namespace) -> int:
     path = args.out or os.path.join(CRVX_HOME, "addon", "CRVX_Turbo60.mcaddon")
     build_addon(path, fog_strength=args.strength, governor=not args.no_governor,
@@ -445,7 +493,7 @@ def cmd_addon(args: argparse.Namespace) -> int:
     dim("Aktifkan: Play > (pensil) dunia > Resource Packs + Behavior Packs > Activate.")
     dim("Pakai  : /function crvx/turbo60   (butuh Cheats ON di dunia itu)")
     dim("Auto   : pasang CRVX AutoGovernor -> jalan sendiri, tanpa Cheats.")
-    dim("         kontrol chat: !crvx status | mati | nyala | hud | reset")
+    dim("         kontrol chat: !crvx status|mati|nyala|hud|reset|turbo|hemat|ganas|pulihkan")
     return 0
 
 
@@ -618,6 +666,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--root", action="store_true")
     common(p)
     p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("texture", help="bangun .mcpack tekstur cepat (self-authored)",
+                       parents=[glob])
+    p.add_argument("--out", default="", help="path keluaran .mcpack")
+    p.add_argument("--res", type=int, default=8, help="resolusi tekstur target (default 8)")
+    p.add_argument("--strength", type=float, default=0.85, help="kekuatan fog cut 0..1")
+    p.set_defaults(func=cmd_texture)
+
+    p = sub.add_parser("texforge", help="turunkan resolusi aset vanilla milik sendiri",
+                       parents=[glob])
+    p.add_argument("--vanilla", required=True,
+                   help="folder / .zip / .mcpack / .apk berisi resource pack vanilla")
+    p.add_argument("--out", default="", help="path keluaran .mcpack")
+    p.add_argument("--res", type=int, default=8, help="resolusi target (8 atau 4)")
+    p.set_defaults(func=cmd_texforge)
 
     p = sub.add_parser("addon", help="bangun .mcaddon lengkap (RP + BP + AutoGovernor)",
                        parents=[glob])

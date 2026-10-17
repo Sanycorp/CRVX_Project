@@ -22,7 +22,8 @@ from .governor import AdaptiveGovernor
 from .models import Device, Plan
 from .modes import all_modes, get_mode
 from .addonforge import build_addon, verify_addon
-from .packforge import build_fogcut_pack
+from .packforge import build_fogcut_pack, verify_pack
+from .texforge import build_texture_pack
 from .planner import CRVX_HOME, Journal, Planner
 from . import generators
 
@@ -185,6 +186,15 @@ class Engine:
         path = os.path.join(CRVX_HOME, "packs", "crvx-fogcut.mcpack")
         return build_fogcut_pack(path)
 
+    def texture(self, res: int = 8) -> str:
+        """Bangun .mcpack tekstur cepat (self-authored) lalu validasi."""
+        path = os.path.join(CRVX_HOME, "addon", f"CRVX_FastTex_{res}x.mcpack")
+        build_texture_pack(path, res=res)
+        hasil = verify_pack(path)
+        if not hasil["ok"]:
+            raise ValueError("pack tekstur gagal validasi: " + "; ".join(hasil["problems"]))
+        return path
+
     def addon(self, strength: float = 0.85) -> str:
         """Bangun .mcaddon lengkap lalu validasi sebelum disajikan."""
         path = os.path.join(CRVX_HOME, "addon", "CRVX_Turbo60.mcaddon")
@@ -269,6 +279,13 @@ def make_handler(engine: Engine):
                     ctype = MIME.get("." + fmt, "text/plain; charset=utf-8")
                     return self._send(200, result["body"].encode("utf-8"), ctype,
                                       {"Content-Disposition": f'attachment; filename="{result["filename"]}"'})
+                if path == "/api/texture":
+                    tex_path = engine.texture()
+                    with open(tex_path, "rb") as fh:
+                        data = fh.read()
+                    return self._send(200, data, "application/octet-stream",
+                                      {"Content-Disposition":
+                                       'attachment; filename="CRVX_FastTex_8x.mcpack"'})
                 if path == "/api/addon":
                     addon_path = engine.addon()
                     with open(addon_path, "rb") as fh:

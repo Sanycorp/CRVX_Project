@@ -452,6 +452,114 @@ class TestAddonForge(unittest.TestCase):
                     self.assertTrue(d["identifier"].startswith("minecraft:fog_"))
 
 
+class TestTexForge(unittest.TestCase):
+    """Codec PNG murni + pack tekstur (self-authored & downscale aset user)."""
+
+    def test_png_roundtrip(self):
+        from crvx.packforge import write_png
+        from crvx.texforge import read_png
+        rows = [bytes((x * 16 % 256, y * 16 % 256, (x + y) * 8 % 256,
+                       255 if (x + y) % 3 else 0))
+                for y in range(8) for x in range(8)]
+        rows = [b"".join(rows[y * 8:(y + 1) * 8]) for y in range(8)]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "t.png")
+            write_png(path, 8, 8, rows)
+            with open(path, "rb") as fh:
+                w, h, back = read_png(fh.read())
+        self.assertEqual((w, h), (8, 8))
+        self.assertEqual(back, rows, "piksel harus identik setelah roundtrip")
+
+    def test_read_png_menolak_bukan_png(self):
+        from crvx.texforge import read_png
+        with self.assertRaises(ValueError):
+            read_png(b"RIFF1234WEBP" + b"\x00" * 40)
+
+    def test_downscale_rata_kotak(self):
+        from crvx.texforge import downscale
+        merah = bytes((200, 40, 40, 255)) * 4
+        rows = [merah for _ in range(4)]
+        w, h = downscale(4, 4, rows, 2, 2)[0][0:4], 2
+        self.assertEqual(bytes((200, 40, 40, 255)), w)
+        # gradasi: kiri gelap, kanan terang -> rata-rata harus di tengah
+        grad = [bytes((0, 0, 0, 255) * 2 + (255, 255, 255, 255) * 2) for _ in range(4)]
+        out = downscale(4, 4, grad, 2, 2)
+        self.assertEqual(out[0][:4], bytes((0, 0, 0, 255)))
+        self.assertEqual(out[0][4:8], bytes((255, 255, 255, 255)))
+
+    def test_strip_animasi_dilewati(self):
+        from crvx.packforge import write_png
+        from crvx.texforge import downscale_png
+        rows = [bytes(16 * 4) for _ in range(512)]      # 16x512 = flipbook strip
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "strip.png")
+            write_png(path, 16, 512, rows)
+            with open(path, "rb") as fh:
+                self.assertIsNone(downscale_png(fh.read(), 8))
+
+    def test_texture_entries_path_vanilla(self):
+        from crvx.texforge import texture_entries
+        ent = texture_entries(8)
+        # path harus persis seperti vanilla Bedrock (diverifikasi dari bedrock-samples)
+        self.assertIn("textures/environment/clouds.png", ent)
+        self.assertIn("textures/environment/weather.png", ent)
+        self.assertIn("textures/blocks/glass.png", ent)
+        self.assertIn("textures/blocks/leaves_oak_opaque.png", ent)
+        self.assertNotIn("textures/environment/rain.png", ent)
+        w, h, rows = ent["textures/environment/clouds.png"]
+        self.assertEqual((w, h), (256, 256))
+        self.assertEqual(set(rows[0]), {0}, "awan harus transparan penuh")
+        w, h, rows = ent["textures/environment/weather.png"]
+        self.assertEqual((w, h), (32, 32))
+        alpha = [rows[y][x * 4 + 3] for y in range(h) for x in range(w)]
+        self.assertLess(max(alpha), 60, "cuaca harus nyaris tak terlihat")
+        w, h, rows = ent["textures/blocks/leaves_oak_opaque.png"]
+        self.assertEqual((w, h), (8, 8))
+        alpha = [rows[y][x * 4 + 3] for y in range(h) for x in range(w)]
+        self.assertIn(0, alpha, "daun butuh lubang alpha-test")
+        self.assertIn(255, alpha)
+
+    def test_build_texture_pack_valid(self):
+        from crvx.packforge import verify_pack
+        from crvx.texforge import build_texture_pack
+        with tempfile.TemporaryDirectory() as tmp:
+            path = build_texture_pack(os.path.join(tmp, "fast.mcpack"), res=8)
+            hasil = verify_pack(path)
+            self.assertTrue(hasil["ok"], str(hasil["problems"]))
+            self.assertIn("textures/environment/weather.png", hasil["entries"])
+            self.assertIn("textures/blocks/glass.png", hasil["entries"])
+
+    def test_build_downscaled_pack(self):
+        from crvx.packforge import write_png
+        from crvx.texforge import build_downscaled_pack, read_png
+        import zipfile as _zip
+        with tempfile.TemporaryDirectory() as tmp:
+            src = os.path.join(tmp, "vanilla")
+            for sub in ("textures/blocks", "textures/environment"):
+                os.makedirs(os.path.join(src, sub), exist_ok=True)
+            big = [bytes((i * 3 % 256, i * 5 % 256, i * 7 % 256, 255)) * 32
+                   for i in range(32)]
+            write_png(os.path.join(src, "textures/blocks/stone.png"), 32, 32, big)
+            write_png(os.path.join(src, "textures/blocks/water_still.png"), 16, 512,
+                      [bytes(16 * 4) for _ in range(512)])
+            with open(os.path.join(src, "textures/terrain_texture.json"), "w") as fh:
+                fh.write("{\"resource_pack_name\": \"vanilla\"}")
+            out = os.path.join(tmp, "out.mcpack")
+            stats = build_downscaled_pack(src, out, target=8)
+            self.assertEqual(stats["converted"], 1)
+            self.assertEqual(stats["skipped_animated"], 1)
+            self.assertEqual(stats["atlas"], ["textures/terrain_texture.json"])
+            with _zip.ZipFile(out) as zf:
+                w, h, _ = read_png(zf.read("textures/blocks/stone.png"))
+                self.assertEqual((w, h), (8, 8))
+                w, h, _ = read_png(zf.read("textures/blocks/water_still.png"))
+                self.assertEqual((w, h), (16, 512), "strip animasi tidak boleh diubah")
+                self.assertIn("textures/terrain_texture.json", zf.namelist())
+                self.assertNotIn("manifest.json", [n for n in zf.namelist()
+                                                   if n.startswith("textures/")])
+
+
+
 def _json_load(data):
     import json as _json
     return _json.loads(data.decode("utf-8"))
