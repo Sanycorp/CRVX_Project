@@ -1,0 +1,601 @@
+{
+ "minecraft:fog_bamboo_jungle": {
+  "distance": [
+   "water"
+  ],
+  "file": "bamboo_jungle",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_bamboo_jungle_hills": {
+  "distance": [
+   "water"
+  ],
+  "file": "bamboo_jungle_hills",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_basalt_deltas": {
+  "distance": [
+   "air",
+   "water",
+   "weather"
+  ],
+  "file": "basalt_deltas",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_beach": {
+  "distance": [
+   "water"
+  ],
+  "file": "beach",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_birch_forest": {
+  "distance": [
+   "water"
+  ],
+  "file": "birch_forest",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_birch_forest_hills": {
+  "distance": [
+   "water"
+  ],
+  "file": "birch_forest_hills",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_cherry_grove": {
+  "distance": [
+   "water"
+  ],
+  "file": "cherry_grove",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_cold_beach": {
+  "distance": [
+   "water"
+  ],
+  "file": "cold_beach",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_cold_ocean": {
+  "distance": [
+   "water"
+  ],
+  "file": "cold_ocean",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_cold_taiga": {
+  "distance": [
+   "water"
+  ],
+  "file": "cold_taiga",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_cold_taiga_hills": {
+  "distance": [
+   "water"
+  ],
+  "file": "cold_taiga_hills",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_cold_taiga_mutated": {
+  "distance": [
+   "water"
+  ],
+  "file": "cold_taiga_mutated",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_crimson_forest": {
+  "distance": [
+   "air",
+   "water",
+   "weather"
+  ],
+  "file": "crimson_forest",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_dappled_forest": {
+  "distance": [
+   "water"
+  ],
+  "file": "dappled_forest",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_deep_cold_ocean": {
+  "distance": [
+   "water"
+  ],
+  "file": "deep_cold_ocean",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_deep_frozen_ocean": {
+  "distance": [
+   "water"
+  ],
+  "file": "deep_frozen_ocean",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_deep_lukewarm_ocean": {
+  "distance": [
+   "water"
+  ],
+  "file": "deep_lukewarm_ocean",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_deep_ocean": {
+  "distance": [
+   "water"
+  ],
+  "file": "deep_ocean",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_deep_warm_ocean": {
+  "distance": [
+   "water"
+  ],
+  "file": "deep_warm_ocean",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_default": {
+  "distance": [
+   "air",
+   "lava",
+   "lava_resistance",
+   "water",
+   "weather"
+  ],
+  "file": "default",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_desert": {
+  "distance": [
+   "water"
+  ],
+  "file": "desert",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_desert_hills": {
+  "distance": [
+   "water"
+  ],
+  "file": "desert_hills",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_dry": {
+  "distance": [
+   "air",
+   "lava",
+   "lava_resistance",
+   "water",
+   "weather"
+  ],
+  "file": "dry",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_extreme_hills": {
+  "distance": [
+   "water"
+  ],
+  "file": "extreme_hills",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_extreme_hills_edge": {
+  "distance": [
+   "water"
+  ],
+  "file": "extreme_hills_edge",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_extreme_hills_mutated": {
+  "distance": [
+   "water"
+  ],
+  "file": "extreme_hills_mutated",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_extreme_hills_plus_trees": {
+  "distance": [
+   "water"
+  ],
+  "file": "extreme_hills_plus_trees",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_extreme_hills_plus_trees_mutated": {
+  "distance": [
+   "water"
+  ],
+  "file": "extreme_hills_plus_trees_mutated",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_flower_forest": {
+  "distance": [
+   "water"
+  ],
+  "file": "flower_forest",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_forest": {
+  "distance": [
+   "water"
+  ],
+  "file": "forest",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_forest_hills": {
+  "distance": [
+   "water"
+  ],
+  "file": "forest_hills",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_frozen_ocean": {
+  "distance": [
+   "water"
+  ],
+  "file": "frozen_ocean",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_frozen_river": {
+  "distance": [
+   "water"
+  ],
+  "file": "frozen_river",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_hell": {
+  "distance": [
+   "air",
+   "water",
+   "weather"
+  ],
+  "file": "hell",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_humid": {
+  "distance": [
+   "air",
+   "lava",
+   "lava_resistance",
+   "water",
+   "weather"
+  ],
+  "file": "humid",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_ice_mountains": {
+  "distance": [
+   "water"
+  ],
+  "file": "ice_mountains",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_ice_plains": {
+  "distance": [
+   "water"
+  ],
+  "file": "ice_plains",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_ice_plains_spikes": {
+  "distance": [
+   "water"
+  ],
+  "file": "ice_plains_spikes",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_jungle": {
+  "distance": [
+   "water"
+  ],
+  "file": "jungle",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_jungle_edge": {
+  "distance": [
+   "water"
+  ],
+  "file": "jungle_edge",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_jungle_hills": {
+  "distance": [
+   "water"
+  ],
+  "file": "jungle_hills",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_jungle_mutated": {
+  "distance": [
+   "water"
+  ],
+  "file": "jungle_mutated",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_lukewarm_ocean": {
+  "distance": [
+   "water"
+  ],
+  "file": "lukewarm_ocean",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_lush_caves": {
+  "distance": [
+   "air",
+   "lava",
+   "lava_resistance",
+   "water",
+   "weather"
+  ],
+  "file": "lush_caves",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_mangrove_swamp": {
+  "distance": [
+   "water"
+  ],
+  "file": "mangrove_swamp",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_mega_spruce_taiga": {
+  "distance": [
+   "water"
+  ],
+  "file": "mega_spruce_taiga",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_mega_spruce_taiga_mutated": {
+  "distance": [
+   "water"
+  ],
+  "file": "mega_spruse_taiga_mutated",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_mega_taiga": {
+  "distance": [
+   "water"
+  ],
+  "file": "mega_taiga",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_mega_taiga_hills": {
+  "distance": [
+   "water"
+  ],
+  "file": "mega_taiga_hills",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_mega_taiga_mutated": {
+  "distance": [
+   "water"
+  ],
+  "file": "mega_taiga_mutated",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_mesa": {
+  "distance": [
+   "water"
+  ],
+  "file": "mesa",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_mesa_bryce": {
+  "distance": [
+   "water"
+  ],
+  "file": "mesa_bryce",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_mesa_mutated": {
+  "distance": [
+   "water"
+  ],
+  "file": "mesa_mutated",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_mesa_plateau": {
+  "distance": [
+   "water"
+  ],
+  "file": "mesa_plateau",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_mesa_plateau_stone": {
+  "distance": [
+   "water"
+  ],
+  "file": "mesa_plateau_stone",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_mushroom_island": {
+  "distance": [
+   "water"
+  ],
+  "file": "mushroom_island",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_mushroom_island_shore": {
+  "distance": [
+   "water"
+  ],
+  "file": "mushroom_island_shore",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_ocean": {
+  "distance": [
+   "water"
+  ],
+  "file": "ocean",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_pale_garden": {
+  "distance": [
+   "air",
+   "water",
+   "weather"
+  ],
+  "file": "pale_garden",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_plains": {
+  "distance": [
+   "water"
+  ],
+  "file": "plains",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_powder_snow": {
+  "distance": [
+   "powder_snow"
+  ],
+  "file": "powder_snow",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_river": {
+  "distance": [
+   "water"
+  ],
+  "file": "river",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_roofed_forest": {
+  "distance": [
+   "water"
+  ],
+  "file": "roofed_forest",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_roofed_forest_mutated": {
+  "distance": [
+   "air",
+   "lava",
+   "lava_resistance",
+   "water",
+   "weather"
+  ],
+  "file": "roofed_forest_mutated",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_savanna": {
+  "distance": [
+   "water"
+  ],
+  "file": "savanna",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_savanna_mutated": {
+  "distance": [
+   "water"
+  ],
+  "file": "savanna_mutated",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_savanna_plateau": {
+  "distance": [
+   "water"
+  ],
+  "file": "savanna_plateau",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_semi_humid": {
+  "distance": [
+   "air",
+   "lava",
+   "lava_resistance",
+   "water",
+   "weather"
+  ],
+  "file": "semi_humid",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_soulsand_valley": {
+  "distance": [
+   "air",
+   "water",
+   "weather"
+  ],
+  "file": "soulsand_valley",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_stone_beach": {
+  "distance": [
+   "water"
+  ],
+  "file": "stone_beach",
+  "format_version": "1.16.100"
+ },
+ "minecraft:fog_sulfur_caves": {
+  "distance": [
+   "air",
+   "water",
+   "weather"
+  ],
+  "file": "sulfur_cave",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_sunflower_plains": {
+  "distance": [
+   "water"
+  ],
+  "file": "sunflower_plains",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_swampland": {
+  "distance": [
+   "water"
+  ],
+  "file": "swampland",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_swampland_mutated": {
+  "distance": [
+   "water"
+  ],
+  "file": "swampland_mutated",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_taiga": {
+  "distance": [
+   "water"
+  ],
+  "file": "taiga",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_taiga_hills": {
+  "distance": [
+   "water"
+  ],
+  "file": "taiga_hills",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_taiga_mutated": {
+  "distance": [
+   "water"
+  ],
+  "file": "taiga_mutated",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_the_end": {
+  "distance": [
+   "air",
+   "water"
+  ],
+  "file": "the_end",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_warm_ocean": {
+  "distance": [
+   "water"
+  ],
+  "file": "warm_ocean",
+  "format_version": "1.21.90"
+ },
+ "minecraft:fog_warped_forest": {
+  "distance": [
+   "air",
+   "water",
+   "weather"
+  ],
+  "file": "warped_forest",
+  "format_version": "1.16.100"
+ }
+}

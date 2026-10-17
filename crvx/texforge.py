@@ -308,16 +308,21 @@ def tex_leaves(size: int = 8, tone: Tuple[int, int, int] = (58, 132, 44),
 # Pack tekstur jadi (self-authored)
 # --------------------------------------------------------------------------- #
 def texture_entries(res: int = 8, cloud_size: int = 256,
-                    weather_alpha: int = 26) -> Dict[str, Tuple[int, int, List[bytes]]]:
+                    weather_alpha: int = 26,
+                    only_environment: bool = False) -> Dict[str, Tuple[int, int, List[bytes]]]:
     """Peta path dalam pack -> (w, h, baris RGBA). Path = path vanilla Bedrock."""
     entries: Dict[str, Tuple[int, int, List[bytes]]] = {
         "textures/environment/clouds.png": tex_transparent(cloud_size),
         "textures/environment/weather.png": tex_weather_faint(32, weather_alpha),
+    }
+    if only_environment:
+        return entries
+    entries.update({
         "textures/blocks/glass.png": tex_glass(res),
         "textures/blocks/glass_pane_top.png": tex_glass_pane_top(res),
         "textures/blocks/ice.png": tex_ice(res, packed=False),
         "textures/blocks/ice_packed.png": tex_ice(res, packed=True),
-    }
+    })
     for index, (name, tone) in enumerate(sorted(LEAF_TONES.items())):
         entries[f"textures/blocks/leaves_{name}_opaque.png"] = tex_leaves(
             res, tone, seed=index + 1)

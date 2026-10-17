@@ -197,7 +197,7 @@ class Engine:
 
     def addon(self, strength: float = 0.85) -> str:
         """Bangun .mcaddon lengkap lalu validasi sebelum disajikan."""
-        path = os.path.join(CRVX_HOME, "addon", "CRVX_Turbo60.mcaddon")
+        path = os.path.join(CRVX_HOME, "addon", "CRVX_FPS_Booster.mcaddon")
         build_addon(path, fog_strength=strength)
         hasil = verify_addon(path)
         if not hasil["ok"]:
@@ -292,7 +292,7 @@ def make_handler(engine: Engine):
                         data = fh.read()
                     return self._send(200, data, "application/octet-stream",
                                       {"Content-Disposition":
-                                       'attachment; filename="CRVX_Turbo60.mcaddon"'})
+                                       'attachment; filename="CRVX_FPS_Booster.mcaddon"'})
                 if path == "/api/pack":
                     pack_path = engine.pack()
                     with open(pack_path, "rb") as fh:

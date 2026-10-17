@@ -435,21 +435,104 @@ class TestAddonForge(unittest.TestCase):
                               "randomtickspeed", "setActionBar", "chatSend",
                               "try {", "world.getDimension"):
                     self.assertIn(wajib, js)
-                self.assertEqual(js.count("import "), 1, "satu import saja")
+                self.assertEqual(js.count("import "), 2, "server + server-ui")
+                for wajib2 in ("ActionFormData", "@minecraft/server-ui",
+                               "KP = ", "integral", "PANAS_NAIK", "AMAN_CULL",
+                               "excludeTypes", "form.show", "setDynamicProperty"):
+                    self.assertIn(wajib2, js)
+                self.assertNotIn("@@", js, "token template tidak boleh tersisa")
 
-    def test_rp_berisi_fog_dan_awan_transparan(self):
+    def test_rp_berisi_fog_skema_benar_dan_awan_transparan(self):
         import zipfile as _zip
         with tempfile.TemporaryDirectory() as tmp:
             path = self.build(tmp)
             with _zip.ZipFile(path) as zf:
                 awan = zf.read("CRVX_Turbo60_RP/textures/environment/clouds.png")
                 self.assertEqual(awan[:8], b"\x89PNG\r\n\x1a\n")
-                # alpha seluruhnya 0 = awan tidak digambar
-                self.assertNotIn(255, list(awan[-400:]))
-                fog = _json_load(zf.read("CRVX_Turbo60_RP/fogs/crvx_fog_cut.json"))
-                self.assertGreaterEqual(len(fog["fog_definitions"]), 16)
-                for d in fog["fog_definitions"]:
-                    self.assertTrue(d["identifier"].startswith("minecraft:fog_"))
+                self.assertNotIn(255, list(awan[-400:]), "awan harus transparan penuh")
+                fogs = [n for n in zf.namelist()
+                        if n.startswith("CRVX_Turbo60_RP/fogs/")]
+                self.assertGreaterEqual(len(fogs), 60)
+                for f in fogs[:12]:
+                    doc = _json_load(zf.read(f))
+                    self.assertIn("minecraft:fog_settings", doc,
+                                  "skema lama (fog_definitions) tidak dibaca game")
+                    fs = doc["minecraft:fog_settings"]
+                    self.assertTrue(
+                        fs["description"]["identifier"].startswith("minecraft:fog_"))
+                    self.assertTrue(fs["distance"], "distance tidak boleh kosong")
+                    for bahaya in ("lava", "lava_resistance", "powder_snow"):
+                        self.assertNotIn(bahaya, fs["distance"])
+
+
+class TestFogForge(unittest.TestCase):
+    """Skema fog diverifikasi terhadap Mojang/bedrock-samples (80 identifier)."""
+
+    def test_cakupan_dan_skema(self):
+        from crvx import fogforge
+        cakup = fogforge.coverage()
+        self.assertEqual(cakup["total"], 80)
+        self.assertGreaterEqual(cakup["ditimpa"], 70)
+        self.assertIn("minecraft:fog_default", fogforge.skipped(),
+                      "fog default punya lava -> wajib dilewati")
+        for ident, doc in fogforge.fog_files().items():
+            self.assertEqual(set(doc.keys()), {"format_version", "minecraft:fog_settings"})
+            fs = doc["minecraft:fog_settings"]
+            self.assertTrue(fs["description"]["identifier"].startswith("minecraft:fog_"))
+            for bahaya in ("lava", "lava_resistance", "powder_snow"):
+                self.assertNotIn(bahaya, fs["distance"])
+
+    def test_identifier_tidak_ditebak_dari_namafile(self):
+        from crvx import fogforge
+        index = fogforge.load_index()
+        self.assertEqual(index["minecraft:fog_mega_spruce_taiga_mutated"]["file"],
+                         "mega_spruse_taiga_mutated")
+        self.assertEqual(index["minecraft:fog_sulfur_caves"]["file"], "sulfur_cave")
+
+
+class TestFoliage(unittest.TestCase):
+    """Tekstur 16x16 alpha-biner buatan sendiri pada path vanilla terverifikasi."""
+
+    def test_alpha_biner_dan_path(self):
+        from crvx import foliage
+        ent = foliage.entries()
+        self.assertEqual(len(ent), 27)
+        for nama in ("leaves_oak_opaque", "glass", "glass_pane_top", "ice",
+                     "ice_packed", "frosted_ice_0", "frosted_ice_3", "ladder",
+                     "vine", "tallgrass", "deadbush", "waterlily", "sapling_oak",
+                     "mushroom_red", "flower_dandelion"):
+            self.assertIn(f"textures/blocks/{nama}.png", ent)
+        for nama in ("tallgrass", "leaves_oak_opaque", "vine", "deadbush"):
+            stat = foliage.alpha_stats(ent[f"textures/blocks/{nama}.png"][2])
+            self.assertEqual(stat["blend"], 0,
+                             f"{nama} harus alpha biner (0 piksel blend)")
+            self.assertGreater(stat["opak"], 20)
+        stat = foliage.alpha_stats(ent["textures/blocks/glass.png"][2])
+        self.assertGreater(stat["blend"], 0, "kaca memang harus translusen")
+
+
+class TestBlackHole(unittest.TestCase):
+    """Seni prosedural lubang hitam untuk ikon pack & tombol UI."""
+
+    def test_horizon_hitam_dan_cincin_terang(self):
+        from crvx import blackhole
+        size, _, rows = blackhole.pack_icon(64)
+        self.assertEqual((size, size), (64, 64))
+        tengah = rows[32][32 * 4:32 * 4 + 4]
+        self.assertEqual(tengah, b"\x00\x00\x00\xff", "horizon harus hitam mutlak")
+        # cincin foton (sekitar 1.13x radius) harus lebih terang dari pojok
+        ring = rows[int(64 * 0.515 - 64 * 0.152 * 1.13)][32 * 4:32 * 4 + 3]
+        pojok = rows[2][2 * 4:2 * 4 + 3]
+        self.assertGreater(sum(ring), sum(pojok) + 60)
+
+    def test_enam_ikon_tombol(self):
+        from crvx import blackhole
+        ikon = blackhole.button_icons(32)
+        self.assertEqual(sorted(ikon), ["ganas", "hemat", "hud",
+                                        "restore", "status", "turbo"])
+        for w, h, rows in ikon.values():
+            self.assertEqual((w, h), (32, 32))
+            self.assertEqual(len(rows), 32)
 
 
 class TestTexForge(unittest.TestCase):

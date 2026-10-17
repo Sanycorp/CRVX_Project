@@ -474,7 +474,7 @@ def cmd_texforge(args: argparse.Namespace) -> int:
 
 
 def cmd_addon(args: argparse.Namespace) -> int:
-    path = args.out or os.path.join(CRVX_HOME, "addon", "CRVX_Turbo60.mcaddon")
+    path = args.out or os.path.join(CRVX_HOME, "addon", "CRVX_FPS_Booster.mcaddon")
     build_addon(path, fog_strength=args.strength, governor=not args.no_governor,
                 interval=args.interval)
     result = verify_addon(path)

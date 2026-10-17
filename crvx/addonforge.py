@@ -25,16 +25,18 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from .packforge import make_icon, write_png
 from .texforge import texture_entries
+from . import blackhole, fogforge, foliage
 
 NAMESPACE = uuid.UUID("6f1c9a2e-4c7b-4d31-9c0a-2b7d5e8f1a40")
 SERVER_API = "2.10.0"          # rilis stabil di Bedrock 26.50 "Wilderness Bound"
+SERVER_UI_API = "2.2.0"        # rilis stabil 15 Sep 2026, bareng 26.50
 MIN_ENGINE_RP = [1, 20, 0]
 MIN_ENGINE_BP = [1, 20, 0]
 MIN_ENGINE_SCRIPT = [1, 21, 0]
 
-RP_NAME = "CRVX Turbo60 - Visual Saver"
-BP_NAME = "CRVX Turbo60 - Preset Performa"
-GOV_NAME = "CRVX AutoGovernor - Adaptif"
+RP_NAME = "CRVX FPS Booster - Visual"
+BP_NAME = "CRVX FPS Booster - Preset Performa"
+GOV_NAME = "CRVX FPS Booster - AutoGovernor v3"
 
 # --------------------------------------------------------------------------- #
 # Fungsi mcfunction (dipanggil dari chat: /function crvx/<nama>)
@@ -145,219 +147,22 @@ def functions() -> Dict[str, List[str]]:
 # Script API: governor adaptif
 # --------------------------------------------------------------------------- #
 def governor_script(interval: int = 60, window: int = 6) -> str:
-    """JavaScript ES module AutoGovernor v2 (entry: scripts/main.js).
+    """Muat AutoGovernor v3 dari template ``data/governor_v3.js``.
 
-    v2: proaktif (menerapkan profil dasar saat dunia dimuat, tanpa perlu
-    ``/function``), sadar-dimensi (Nether mematikan fire tick), sensor tekanan
-    entity (jumlah dropped item), HUD action bar, dan kendali chat ``!crvx``.
+    Template JS disimpan terpisah supaya mudah dibaca & di-lint dengan
+    ``node --check``. Token ``@@...@@`` disubstitusi di sini.
     """
-    kinds = json.dumps(ENTITY_SAMPAH)
-    return """// CRVX AutoGovernor v2 - governor adaptif Minecraft Bedrock (Script API %s)
-// Mengukur tick-time nyata tiap %d tick, bukan menebak. Naik level saat dunia
-// berat, turun perlahan setelah %d sampel sehat (hysteresis) agar tidak berosilasi.
-// Tidak butuh Cheats -> achievement dunia tetap aman.
-import { world, system } from "@minecraft/server";
-
-const TAG = "\u00a7b[CRVX]\u00a7r ";
-const INTERVAL = %d;                 // tick per sampel (60 tick = 3 detik @20 TPS)
-const WINDOW = %d;                   // jumlah sampel untuk rata-rata
-const TENANG = 3;                    // sampel sehat beruntun sebelum turun 1 level
-const BATAS_ITEM = 60;               // dropped item di atas ini = tekanan entity
-const SAMPAH = %s;
-const LABEL = ["SEHAT", "HEMAT", "DINGIN", "MAX"];
-
-const riwayat = [];
-let level = 0;
-let tenang = 0;
-let terakhir = Date.now();
-let profilSiap = false;
-let dimensiAktif = "";
-let itemTerakhir = 0;
-
-let aktif = world.getDynamicProperty("crvx:aktif") !== 0;
-let hud = world.getDynamicProperty("crvx:hud") !== 0;
-let basis = world.getDynamicProperty("crvx:basis") || "turbo";
-
-function aman(fn) { try { return fn(); } catch (e) { return null; } }
-function perintah(dim, cmd) { aman(() => dim.runCommand(cmd)); }
-
-// ---- profil dasar: diterapkan sekali tiap dunia/dimensi, tanpa /function ----
-function terapkanProfil(dim, mode) {
-  perintah(dim, "gamerule doweathercycle false");
-  perintah(dim, "weather clear");
-  perintah(dim, "gamerule doinsomnia false");
-  perintah(dim, "gamerule mobgriefing false");
-  perintah(dim, "gamerule naturalregeneration true");
-  if (mode === "turbo") {
-    perintah(dim, "gamerule randomtickspeed 1");
-    perintah(dim, "gamerule domobspawning true");
-  } else if (mode === "hemat") {
-    perintah(dim, "gamerule randomtickspeed 0");
-    perintah(dim, "gamerule dofiretick false");
-    perintah(dim, "gamerule domobspawning true");
-  } else if (mode === "ganas") {
-    perintah(dim, "gamerule randomtickspeed 0");
-    perintah(dim, "gamerule dofiretick false");
-    perintah(dim, "gamerule domobspawning false");
-  }
-  for (const t of ["item", "xp_orb"]) perintah(dim, "kill @e[type=" + t + "]");
-}
-
-// ---- eskalasi saat tick-time memburuk ----
-function terapkan(target) {
-  const dim = aman(() => world.getDimension("overworld"));
-  if (!dim) return;
-  if (target === 0) {
-    perintah(dim, "gamerule randomtickspeed " + (basis === "turbo" ? "1" : "0"));
-    perintah(dim, "gamerule domobspawning " + (basis === "ganas" ? "false" : "true"));
-    perintah(dim, "gamerule dofiretick " + (dimensiAktif === "nether" ? "false" : "true"));
-  }
-  if (target >= 1) {
-    perintah(dim, "gamerule doweathercycle false");
-    perintah(dim, "weather clear");
-    perintah(dim, "kill @e[type=item]");
-    perintah(dim, "kill @e[type=xp_orb]");
-  }
-  if (target >= 2) {
-    perintah(dim, "gamerule randomtickspeed 0");
-    perintah(dim, "gamerule dofiretick false");
-    perintah(dim, "gamerule doinsomnia false");
-    for (const t of SAMPAH) perintah(dim, "kill @e[type=" + t + "]");
-  }
-  if (target >= 3) {
-    perintah(dim, "gamerule mobgriefing false");
-    perintah(dim, "gamerule domobspawning false");
-  }
-  level = target;
-}
-
-function tingkatKe(tps) {
-  if (tps >= 19.2) return 0;
-  if (tps >= 16.0) return 1;
-  if (tps >= 12.0) return 2;
-  return 3;
-}
-
-function hitungItem(dim) {
-  const daftar = aman(() => dim.getEntities({ type: "minecraft:item" }));
-  return daftar ? daftar.length : 0;
-}
-
-function sample() {
-  const pemain = aman(() => world.getPlayers()) || [];
-  if (!aktif || pemain.length === 0) { terakhir = Date.now(); return; }
-
-  const sekarang = Date.now();
-  const delta = Math.max(1, sekarang - terakhir);
-  terakhir = sekarang;
-  const tps = Math.min(20, INTERVAL / (delta / 1000));
-  riwayat.push(tps);
-  while (riwayat.length > WINDOW) riwayat.shift();
-
-  const dim = aman(() => pemain[0].dimension);
-  const namaDim = dim ? String(dim.id) : "";
-  if (!profilSiap || namaDim !== dimensiAktif) {
-    profilSiap = true;
-    dimensiAktif = namaDim;
-    if (dim) {
-      terapkanProfil(dim, basis);
-      if (namaDim.indexOf("nether") >= 0) perintah(dim, "gamerule dofiretick false");
-    }
-  }
-
-  itemTerakhir = dim ? hitungItem(dim) : 0;
-  if (dim && itemTerakhir > BATAS_ITEM && level < 1) {
-    perintah(dim, "kill @e[type=item]");
-    perintah(dim, "kill @e[type=xp_orb]");
-  }
-
-  const rata = riwayat.reduce((a, b) => a + b, 0) / riwayat.length;
-  const target = tingkatKe(rata);
-
-  if (target > level) {
-    tenang = 0;
-    terapkan(target);
-    aman(() => world.sendMessage(TAG + "beban naik (TPS " + rata.toFixed(1) +
-      ", item " + itemTerakhir + ") -> " + LABEL[target] + " diterapkan otomatis"));
-  } else if (target < level) {
-    tenang++;
-    if (tenang >= TENANG) {
-      tenang = 0;
-      terapkan(level - 1);
-      aman(() => world.sendMessage(TAG + "stabil (TPS " + rata.toFixed(1) +
-        ") -> turun ke " + LABEL[level]));
-    }
-  } else {
-    tenang = 0;
-  }
-
-  if (hud) {
-    const ms = (delta / INTERVAL).toFixed(1);
-    const teks = "\u00a7eTPS " + rata.toFixed(1) + "\u00a7r | \u00a7btick " + ms +
-      " ms\u00a7r | \u00a77item " + itemTerakhir + "\u00a7r | \u00a7a" +
-      LABEL[level] + "\u00a7r | \u00a7d" + basis.toUpperCase() + "\u00a7r";
-    for (const p of pemain) aman(() => p.onScreenDisplay.setActionBar(teks));
-  }
-}
-
-system.runInterval(sample, INTERVAL);
-
-// ---- kendali chat, tanpa Cheats: !crvx <perintah> ----
-aman(() => world.beforeEvents.chatSend.subscribe((ev) => {
-  const pesan = (ev.message || "").trim().toLowerCase();
-  if (pesan.indexOf("!crvx") !== 0) return;
-  const arg = pesan.split(/\s+/)[1] || "status";
-  ev.cancel = true;
-  system.run(() => {
-    if (arg === "mati") {
-      aktif = false; world.setDynamicProperty("crvx:aktif", 0);
-      world.sendMessage(TAG + "governor DIMATIKAN. Reset gamerule: /function crvx/pulihkan");
-    } else if (arg === "nyala") {
-      aktif = true; tenang = 0; world.setDynamicProperty("crvx:aktif", 1);
-      world.sendMessage(TAG + "governor NYALA, sampel tiap " +
-        (INTERVAL * 50 / 1000).toFixed(0) + " detik.");
-    } else if (arg === "hud") {
-      hud = !hud; world.setDynamicProperty("crvx:hud", hud ? 1 : 0);
-      world.sendMessage(TAG + "HUD action bar " + (hud ? "NYALA" : "MATI"));
-    } else if (arg === "turbo" || arg === "hemat" || arg === "ganas") {
-      basis = arg; world.setDynamicProperty("crvx:basis", arg);
-      profilSiap = false; tenang = 0;
-      world.sendMessage(TAG + "profil dasar -> " + arg.toUpperCase() +
-        " (diterapkan ulang otomatis)");
-    } else if (arg === "reset") {
-      terapkan(0); riwayat.length = 0; tenang = 0;
-      world.sendMessage(TAG + "level dipaksa kembali ke SEHAT.");
-    } else if (arg === "pulihkan") {
-      const dim = aman(() => world.getDimension("overworld"));
-      if (dim) {
-        perintah(dim, "gamerule randomtickspeed 1");
-        perintah(dim, "gamerule doweathercycle true");
-        perintah(dim, "gamerule doinsomnia true");
-        perintah(dim, "gamerule mobgriefing true");
-        perintah(dim, "gamerule dofiretick true");
-        perintah(dim, "gamerule domobspawning true");
-      }
-      world.sendMessage(TAG + "semua gamerule dikembalikan ke default vanilla.");
-    } else {
-      const rata = riwayat.length
-        ? (riwayat.reduce((a, b) => a + b, 0) / riwayat.length).toFixed(1) : "-";
-      world.sendMessage(TAG + "AutoGovernor v2 " + (aktif ? "AKTIF" : "MATI") +
-        " | level " + level + " (" + LABEL[level] + ") | TPS " + rata +
-        " | item " + itemTerakhir + " | profil " + basis.toUpperCase() +
-        " | HUD " + (hud ? "nyala" : "mati"));
-      world.sendMessage(TAG + "perintah: !crvx nyala|mati|hud|reset|turbo|hemat|ganas|pulihkan");
-    }
-  });
-}));
-
-world.afterEvents.worldLoad.subscribe(() => {
-  system.runTimeout(() => {
-    if (!aktif) return;
-    world.sendMessage(TAG + "AutoGovernor v2 siaga (profil " + basis.toUpperCase() +
-      "). Ketik \u00a7e!crvx status\u00a7r untuk cek, \u00a7e!crvx hud\u00a7r untuk HUD.");
-  }, 40);
-});
-""" % (SERVER_API, interval, window, interval, window, kinds)
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "data", "governor_v3.js")
+    with open(path, "r", encoding="utf-8") as fh:
+        js = fh.read()
+    for token, nilai in (("@@SERVER_API@@", SERVER_API),
+                         ("@@SERVER_UI_API@@", SERVER_UI_API),
+                         ("@@INTERVAL@@", str(int(interval))),
+                         ("@@WINDOW@@", str(int(window))),
+                         ("@@KINDS@@", json.dumps(ENTITY_SAMPAH))):
+        js = js.replace(token, nilai)
+    return js
 
 
 # --------------------------------------------------------------------------- #
@@ -431,22 +236,30 @@ def build_addon(out_path: str, version: Sequence[int] = (1, 0, 0),
     # ---- 1. Resource pack -------------------------------------------------- #
     rp = os.path.join(staging, "CRVX_Turbo60_RP")
     os.makedirs(os.path.join(rp, "fogs"), exist_ok=True)
-    write_png(os.path.join(rp, "pack_icon.png"), 128, 128, make_icon(accent=(56, 189, 248)))
+    os.makedirs(os.path.join(rp, "textures", "ui"), exist_ok=True)
+    write_png(os.path.join(rp, "pack_icon.png"), 128, 128,
+              blackhole.pack_icon(128, "status")[2])
     _tulis(rp, "manifest.json", json.dumps(
         manifest(RP_NAME,
-                 f"Tekstur {texture_res}x{texture_res} buatan sendiri untuk permukaan "
-                 "transparan terberat (kaca, es, daun) + awan transparan + cuaca "
-                 "nyaris tak terlihat + 16 definisi fog dipangkas. Mengurangi "
-                 "overdraw & bandwidth tekstur. Bukan aset Mojang.",
+                 f"CRVX FPS Booster: tekstur 16x16 alpha-biner buatan sendiri "
+                 f"(27 permukaan transparan terberat) + awan transparan + cuaca "
+                 f"nyaris tak terlihat + {len(fogforge.fog_files(fog_strength))} definisi "
+                 f"fog skema benar + ikon UI lubang hitam. Bukan aset Mojang.",
                  version, "resources", MIN_ENGINE_RP), indent=2, ensure_ascii=False))
-    _tulis(rp, "fogs/crvx_fog_cut.json",
-           json.dumps(fog_file(fog_strength), indent=2, ensure_ascii=False))
-    for rel, (w, h, rows) in texture_entries(texture_res).items():
+    for rel, doc in fogforge.fog_files(fog_strength).items():
+        _tulis(rp, rel, json.dumps(doc, indent=2, ensure_ascii=False))
+    for rel, (w, h, rows) in foliage.entries().items():
         target = os.path.join(rp, rel)
         os.makedirs(os.path.dirname(target), exist_ok=True)
         write_png(target, w, h, rows)
+    for rel, (w, h, rows) in texture_entries(texture_res, only_environment=True).items():
+        target = os.path.join(rp, rel)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        write_png(target, w, h, rows)
+    for kind, (w, h, rows) in blackhole.button_icons(32).items():
+        write_png(os.path.join(rp, "textures", "ui", f"crvx_{kind}.png"), w, h, rows)
     _tulis(rp, "texts/en_US.lang",
-           "pack.name=%s\npack.description=CRVX fast textures + fog cut\n" % RP_NAME)
+           "pack.name=%s\npack.description=CRVX fast textures + fog + UI black hole\n" % RP_NAME)
     _tulis(rp, "texts/languages.json", json.dumps(["en_US"], indent=2))
 
     # ---- 2. Behavior pack fungsi ------------------------------------------ #
@@ -478,7 +291,9 @@ def build_addon(out_path: str, version: Sequence[int] = (1, 0, 0),
                      "Tanpa Cheats. Kontrol chat: !crvx status|mati|nyala|hud|reset",
                      version, "data", MIN_ENGINE_SCRIPT, script_entry="scripts/main.js",
                      dependencies=[{"module_name": "@minecraft/server",
-                                    "version": SERVER_API}]),
+                                    "version": SERVER_API},
+                                   {"module_name": "@minecraft/server-ui",
+                                    "version": SERVER_UI_API}]),
             indent=2, ensure_ascii=False))
         _tulis(gov, "scripts/main.js", governor_script(interval, window))
         packs.append(gov)
@@ -565,6 +380,10 @@ def verify_addon(path: str) -> Dict[str, object]:
                     if dep.get("module_name") == "@minecraft/server":
                         if dep.get("version") != SERVER_API:
                             problems.append(f"{folder}: @minecraft/server harus {SERVER_API}")
+                    if dep.get("module_name") == "@minecraft/server-ui":
+                        if dep.get("version") != SERVER_UI_API:
+                            problems.append(f"{folder}: @minecraft/server-ui harus "
+                                            f"{SERVER_UI_API}")
                     elif dep.get("uuid") and dep["uuid"] not in uuids:
                         problems.append(f"{folder}: dependency uuid tak dikenal "
                                         f"{dep['uuid']}")
@@ -587,18 +406,32 @@ def verify_addon(path: str) -> Dict[str, object]:
                     fog = [n for n in names if n.startswith(folder) and "/fogs/" in n]
                     if not fog:
                         problems.append(f"{folder}: resource pack tanpa definisi fog")
+                    if len(fog) < 60:
+                        problems.append(f"{folder}: hanya {len(fog)} file fog "
+                                        f"(vanilla punya 80 identifier)")
                     for f in fog:
                         try:
                             doc = json.loads(zf.read(f).decode("utf-8"))
                         except json.JSONDecodeError as exc:
                             problems.append(f"{f}: JSON rusak ({exc})")
                             continue
-                        defs = doc.get("fog_definitions", [])
-                        if not defs:
-                            problems.append(f"{f}: fog_definitions kosong")
-                        for d in defs:
-                            if not d.get("identifier") or "minecraft:fog_settings" not in d:
-                                problems.append(f"{f}: definisi fog tidak lengkap")
+                        if not doc.get("format_version"):
+                            problems.append(f"{f}: format_version tidak ada")
+                        fs = doc.get("minecraft:fog_settings")
+                        if not isinstance(fs, dict):
+                            problems.append(f"{f}: skema salah - butuh "
+                                            f"'minecraft:fog_settings' di level atas")
+                            continue
+                        ident = (fs.get("description") or {}).get("identifier", "")
+                        if not ident.startswith("minecraft:fog_"):
+                            problems.append(f"{f}: identifier tidak valid ({ident})")
+                        dist = fs.get("distance") or {}
+                        if not dist:
+                            problems.append(f"{f}: distance kosong")
+                        for bahaya in ("lava", "lava_resistance", "powder_snow"):
+                            if bahaya in dist:
+                                problems.append(f"{f}: kunci {bahaya} tidak boleh "
+                                                f"ditimpa (merusak gameplay)")
                 if types[0] == "data":
                     funcs = [n for n in names if n.startswith(folder)
                              and n.endswith(".mcfunction")]
