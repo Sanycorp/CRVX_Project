@@ -21,6 +21,7 @@ from .detect import detect_device
 from .governor import AdaptiveGovernor
 from .models import Device, Plan
 from .modes import all_modes, get_mode
+from .addonforge import build_addon, verify_addon
 from .packforge import build_fogcut_pack
 from .planner import CRVX_HOME, Journal, Planner
 from . import generators
@@ -184,6 +185,15 @@ class Engine:
         path = os.path.join(CRVX_HOME, "packs", "crvx-fogcut.mcpack")
         return build_fogcut_pack(path)
 
+    def addon(self, strength: float = 0.85) -> str:
+        """Bangun .mcaddon lengkap lalu validasi sebelum disajikan."""
+        path = os.path.join(CRVX_HOME, "addon", "CRVX_Turbo60.mcaddon")
+        build_addon(path, fog_strength=strength)
+        hasil = verify_addon(path)
+        if not hasil["ok"]:
+            raise ValueError("addon gagal validasi: " + "; ".join(hasil["problems"]))
+        return path
+
 
 # --------------------------------------------------------------------------- #
 # HTTP handler
@@ -259,6 +269,13 @@ def make_handler(engine: Engine):
                     ctype = MIME.get("." + fmt, "text/plain; charset=utf-8")
                     return self._send(200, result["body"].encode("utf-8"), ctype,
                                       {"Content-Disposition": f'attachment; filename="{result["filename"]}"'})
+                if path == "/api/addon":
+                    addon_path = engine.addon()
+                    with open(addon_path, "rb") as fh:
+                        data = fh.read()
+                    return self._send(200, data, "application/octet-stream",
+                                      {"Content-Disposition":
+                                       'attachment; filename="CRVX_Turbo60.mcaddon"'})
                 if path == "/api/pack":
                     pack_path = engine.pack()
                     with open(pack_path, "rb") as fh:

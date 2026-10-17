@@ -19,6 +19,7 @@ from .minecraft import merge as options_merge
 from .models import Device, Plan
 from .modes import all_modes, get_mode
 from .packforge import build_fogcut_pack, verify_pack
+from .addonforge import build_addon, verify_addon
 from .planner import BACKUP_DIR, CRVX_HOME, Journal, Planner
 from . import generators
 
@@ -424,6 +425,30 @@ def _write(path: str, text: str) -> None:
         os.chmod(path, 0o755)
 
 
+def cmd_addon(args: argparse.Namespace) -> int:
+    path = args.out or os.path.join(CRVX_HOME, "addon", "CRVX_Turbo60.mcaddon")
+    build_addon(path, fog_strength=args.strength, governor=not args.no_governor,
+                interval=args.interval)
+    result = verify_addon(path)
+    head("ADDONFORGE")
+    if result["ok"]:
+        ok(f"{path} ({result['size_bytes']} bytes, {len(result['entries'])} entri)")
+        for pack in result["packs"]:
+            dim(f"  - {pack['folder']}: {pack['name']} [{', '.join(pack['types'])}]")
+    else:
+        bad("addon tidak valid:")
+        for problem in result["problems"]:
+            print(f"     {problem}")
+        return 1
+    print()
+    dim("Pasang: kirim file .mcaddon ke HP lalu buka -> Minecraft mengimpornya otomatis.")
+    dim("Aktifkan: Play > (pensil) dunia > Resource Packs + Behavior Packs > Activate.")
+    dim("Pakai  : /function crvx/turbo60   (butuh Cheats ON di dunia itu)")
+    dim("Auto   : pasang CRVX AutoGovernor -> jalan sendiri, tanpa Cheats.")
+    dim("         kontrol chat: !crvx status | mati | nyala | hud | reset")
+    return 0
+
+
 def cmd_pack(args: argparse.Namespace) -> int:
     path = args.out or os.path.join(CRVX_HOME, "packs", "crvx-fogcut.mcpack")
     build_fogcut_pack(path, strength=args.strength)
@@ -593,6 +618,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--root", action="store_true")
     common(p)
     p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("addon", help="bangun .mcaddon lengkap (RP + BP + AutoGovernor)",
+                       parents=[glob])
+    p.add_argument("--out", default="", help="path keluaran .mcaddon")
+    p.add_argument("--strength", type=float, default=0.85, help="kekuatan fog cut 0..1")
+    p.add_argument("--interval", type=int, default=60, help="tick per sampel governor")
+    p.add_argument("--no-governor", action="store_true", help="tanpa pack script AutoGovernor")
+    p.set_defaults(func=cmd_addon)
 
     p = sub.add_parser("pack", help="bangun .mcpack fog-cut", parents=[glob])
     p.add_argument("--out", default="")

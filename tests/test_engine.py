@@ -363,6 +363,101 @@ class TestGenerators(unittest.TestCase):
         self.assertIn(dev.minecraft.options_path, script)
 
 
+class TestAddonForge(unittest.TestCase):
+    """Add-on dalam game: .mcaddon (RP fog + BP fungsi + AutoGovernor script)."""
+
+    def build(self, tmp):
+        from crvx.addonforge import build_addon
+        return build_addon(os.path.join(tmp, "CRVX_Turbo60.mcaddon"))
+
+    def test_addon_valid(self):
+        from crvx.addonforge import verify_addon
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.build(tmp)
+            hasil = verify_addon(path)
+            self.assertTrue(hasil["ok"], str(hasil["problems"]))
+            self.assertEqual(len(hasil["packs"]), 3)
+            self.assertGreater(hasil["size_bytes"], 10000)
+            folders = {p["folder"] for p in hasil["packs"]}
+            self.assertIn("CRVX_Turbo60_RP", folders)
+            self.assertIn("CRVX_Turbo60_BP", folders)
+            self.assertIn("CRVX_AutoGovernor_BP", folders)
+
+    def test_uuids_stabil_dan_unik(self):
+        import json as _json
+        import zipfile as _zip
+        from crvx.addonforge import _uuid
+        with tempfile.TemporaryDirectory() as tmp:
+            a = self.build(tmp)
+            b = self.build(os.path.join(tmp, "sub"))
+            with _zip.ZipFile(a) as za, _zip.ZipFile(b) as zb:
+                for folder in ("CRVX_Turbo60_RP", "CRVX_Turbo60_BP"):
+                    ua = _json.loads(za.read(f"{folder}/manifest.json"))["header"]["uuid"]
+                    ub = _json.loads(zb.read(f"{folder}/manifest.json"))["header"]["uuid"]
+                    self.assertEqual(ua, ub, "uuid harus deterministik")
+        self.assertNotEqual(_uuid("A", "header"), _uuid("B", "header"))
+
+    def test_fungsi_mcfunction_bersih(self):
+        import zipfile as _zip
+        from crvx.addonforge import functions
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.build(tmp)
+            with _zip.ZipFile(path) as zf:
+                nama = set()
+                for entry in zf.namelist():
+                    if not entry.endswith(".mcfunction"):
+                        continue
+                    nama.add(entry.rsplit("/", 1)[-1][:-len(".mcfunction")])
+                    isi = zf.read(entry).decode("utf-8")
+                    for baris in isi.splitlines():
+                        baris = baris.strip()
+                        if not baris or baris.startswith("#"):
+                            continue
+                        self.assertFalse(baris.startswith("/"), f"{entry}: ada '/' di depan")
+                        if baris.startswith("gamerule"):
+                            # 2 token = query (dipakai status), 3 token = setter
+                            self.assertIn(len(baris.split()), (2, 3))
+                self.assertEqual(nama, set(functions().keys()))
+                self.assertIn("pulihkan", nama)
+
+    def test_script_governor(self):
+        import zipfile as _zip
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.build(tmp)
+            with _zip.ZipFile(path) as zf:
+                man = _json_load(zf.read("CRVX_AutoGovernor_BP/manifest.json"))
+                deps = man["dependencies"]
+                self.assertEqual(deps[0]["module_name"], "@minecraft/server")
+                self.assertEqual(deps[0]["version"], "2.10.0")
+                self.assertEqual(man["modules"][1]["type"], "script")
+                js = zf.read("CRVX_AutoGovernor_BP/scripts/main.js").decode("utf-8")
+                for wajib in ("import { world, system }", "system.runInterval",
+                              "randomtickspeed", "setActionBar", "chatSend",
+                              "try {", "world.getDimension"):
+                    self.assertIn(wajib, js)
+                self.assertEqual(js.count("import "), 1, "satu import saja")
+
+    def test_rp_berisi_fog_dan_awan_transparan(self):
+        import zipfile as _zip
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.build(tmp)
+            with _zip.ZipFile(path) as zf:
+                awan = zf.read("CRVX_Turbo60_RP/textures/environment/clouds.png")
+                self.assertEqual(awan[:8], b"\x89PNG\r\n\x1a\n")
+                # alpha seluruhnya 0 = awan tidak digambar
+                self.assertNotIn(255, list(awan[-400:]))
+                fog = _json_load(zf.read("CRVX_Turbo60_RP/fogs/crvx_fog_cut.json"))
+                self.assertGreaterEqual(len(fog["fog_definitions"]), 16)
+                for d in fog["fog_definitions"]:
+                    self.assertTrue(d["identifier"].startswith("minecraft:fog_"))
+
+
+def _json_load(data):
+    import json as _json
+    return _json.loads(data.decode("utf-8"))
+
+
+
 class TestServerApi(unittest.TestCase):
     def setUp(self):
         from crvx.server import make_handler, Engine

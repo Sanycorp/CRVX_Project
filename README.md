@@ -32,6 +32,21 @@ python3 -m crvx apply --mode 120 --bench -y   # terapkan + ukur FPS sebelum/sesu
 python3 -m crvx undo                   # kembalikan semuanya
 ```
 
+## Add-on dari dalam game (tanpa ADB, tanpa PC)
+
+`python3 -m crvx addon --out addon/CRVX_Turbo60.mcaddon` menghasilkan satu file
+**`addon/CRVX_Turbo60.mcaddon`** (39 KB) berisi tiga pack:
+
+| Pack | Isi | Efek |
+| --- | --- | --- |
+| `CRVX Turbo60 - Visual Saver` (RP) | 16 definisi fog dipangkas + `clouds.png` transparan + `rain.png` 88% transparan | fragmen alpha-blended turun → GPU lega, HP lebih dingin |
+| `CRVX Turbo60 - Preset Performa` (BP) | `/function crvx/turbo60` · `hemat` · `ganas` · `bersihkan` · `status` · `pulihkan` | gamerule + pembersihan entity → beban CPU & block-update turun |
+| `CRVX AutoGovernor - Adaptif` (BP + Script API `@minecraft/server` 2.10.0) |ukur tick-time tiap 3 detik, 4 level hemat, hysteresis, HUD action bar, kontrol chat `!crvx status|mati|nyala|hud|reset` | menyesuaikan diri otomatis saat dunia berat — **tanpa Cheats, achievement tidak terkunci** |
+
+Pasang: kirim `.mcaddon` ke HP → buka → Minecraft mengimpornya otomatis →
+**Play → ✏️ dunia → Resource Packs & Behavior Packs → Activate** (aktifkan ketiganya).
+Jalur `/function` butuh Cheats ON di dunia itu; AutoGovernor tidak butuh.
+
 Tanpa PC? Skrip siap jalan sudah ada di **`boost/`**:
 
 | File | Fungsi |

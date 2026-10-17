@@ -21,3 +21,8 @@ venv/
 Thumbs.db
 .idea/
 .vscode/
+
+# add-on jadi adalah deliverable: tetap dilacak walau *.mcaddon diabaikan
+!addon/
+!addon/*.mcaddon
+!addon/*.mcpack
