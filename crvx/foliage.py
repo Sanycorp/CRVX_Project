@@ -43,14 +43,24 @@ def _warna(base: Tuple[int, int, int], v: float) -> Tuple[int, int, int, int]:
 # Daun (alpha biner, pola bergerombol seperti vanilla)
 # --------------------------------------------------------------------------- #
 def daun(tone: Tuple[int, int, int] = (58, 132, 44), seed: int = 1,
-         lubang: float = 0.10) -> Tuple[int, int, Rows]:
+         lubang: float = 0.0) -> Tuple[int, int, Rows]:
+    """Varian ``*_opaque`` WAJIB opak penuh (alpha 255 di semua piksel).
+
+    Vanilla sengaja membuat leaves_*_opaque tanpa lubang supaya blok daun
+    dirender sebagai kubus padat: permukaan di belakangnya tidak perlu
+    digambar. Melubanginya (seperti versi sebelumnya) mengubah setiap blok
+    daun menjadi cutout tembus-pandang -> jumlah permukaan daun yang harus
+    digambar meledak -> hutan jadi JAUH lebih berat. Parameter ``lubang``
+    dibiarkan ada (default 0) hanya untuk kompatibilitas pemanggil lama.
+    """
     rnd = random.Random(seed * 6151)
     sel = _baru()
     for y in range(SIZE):
         for x in range(SIZE):
             n = rnd.random()
             if n < lubang and 2 <= x <= 13 and 2 <= y <= 13:
-                continue                       # lubang alpha-test
+                sel[y][x] = _warna(tone, 0.55)   # bayangan dalam, tetap opak
+                continue
             gumpal = 0.62 + 0.55 * (0.5 + 0.5 * math.sin(x * 1.7 + seed) *
                                     math.cos(y * 1.9 - seed))
             sel[y][x] = _warna(tone, gumpal * (0.82 + 0.36 * rnd.random()))

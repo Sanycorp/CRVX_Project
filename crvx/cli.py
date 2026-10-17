@@ -685,7 +685,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("addon", help="bangun .mcaddon lengkap (RP + BP + AutoGovernor)",
                        parents=[glob])
     p.add_argument("--out", default="", help="path keluaran .mcaddon")
-    p.add_argument("--strength", type=float, default=0.85, help="kekuatan fog cut 0..1")
+    p.add_argument("--strength", type=float, default=0.35, help="kepadatan fog 0..1 (0.35 = halus)")
     p.add_argument("--interval", type=int, default=60, help="tick per sampel governor")
     p.add_argument("--no-governor", action="store_true", help="tanpa pack script AutoGovernor")
     p.set_defaults(func=cmd_addon)

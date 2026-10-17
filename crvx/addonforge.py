@@ -219,8 +219,47 @@ def _tulis(root: str, rel: str, isi: str) -> None:
         fh.write(isi)
 
 
-def build_addon(out_path: str, version: Sequence[int] = (1, 1, 0),
-                fog_strength: float = 0.85, governor: bool = True,
+def gov_functions() -> Dict[str, List[str]]:
+    """mcfunction milik pack governor: SATU perintah per perubahan level.
+
+    Sebelumnya eskalasi mengirim ~10 runCommand sekaligus; pada HP lemah itu
+    berarti storm parse+eksekusi perintah tiap osilasi = stutter. Kini JS hanya
+    memanggil ``function gov/l<N>`` dan seluruh aksi ada di sini.
+    """
+    sampah = [f"kill @e[type={k}]" for k in ENTITY_SAMPAH]
+    jauh = [f"kill @e[type={t},rm=40]" for t in
+            ("zombie", "skeleton", "creeper", "spider", "cave_spider", "enderman",
+             "witch", "stray", "husk", "drowned", "phantom", "pillager", "vindicator",
+             "ravager", "blaze", "ghast", "zombie_pigman", "hoglin", "piglin")]
+    l0 = ["gamerule randomtickspeed 1", "gamerule domobspawning true",
+          "gamerule dofiretick true", "gamerule mobgriefing true",
+          "gamerule doinsomnia true"]
+    l1 = l0 + ["gamerule doweathercycle false", "weather clear",
+               "kill @e[type=item]", "kill @e[type=xp_orb]"]
+    l2 = l1 + ["gamerule randomtickspeed 0", "gamerule dofiretick false",
+               "gamerule doinsomnia false"] + sampah
+    l3 = l2 + ["gamerule mobgriefing false", "gamerule domobspawning false"] + jauh
+    dasar = ["gamerule doweathercycle false", "weather clear",
+             "gamerule doinsomnia false", "gamerule mobgriefing false",
+             "gamerule naturalregeneration true"]
+    return {
+        "l0": l0, "l1": l1, "l2": l2, "l3": l3,
+        "profil_turbo": dasar + ["gamerule randomtickspeed 1",
+                                 "gamerule domobspawning true",
+                                 "kill @e[type=item]", "kill @e[type=xp_orb]"],
+        "profil_hemat": dasar + ["gamerule randomtickspeed 0",
+                                 "gamerule dofiretick false",
+                                 "gamerule domobspawning true",
+                                 "kill @e[type=item]", "kill @e[type=xp_orb]"],
+        "profil_ganas": dasar + ["gamerule randomtickspeed 0",
+                                 "gamerule dofiretick false",
+                                 "gamerule domobspawning false"],
+        "afk": ["gamerule randomtickspeed 0"],
+    }
+
+
+def build_addon(out_path: str, version: Sequence[int] = (1, 2, 0),
+                fog_strength: float = 0.35, governor: bool = True,
                 interval: int = 60, window: int = 6,
                 texture_res: int = 8) -> str:
     """Bangun ``.mcaddon`` lengkap. Kembalikan path-nya."""
@@ -282,6 +321,10 @@ def build_addon(out_path: str, version: Sequence[int] = (1, 1, 0),
     if governor:
         gov = os.path.join(staging, "CRVX_AutoGovernor_BP")
         os.makedirs(os.path.join(gov, "scripts"), exist_ok=True)
+        os.makedirs(os.path.join(gov, "functions", "gov"), exist_ok=True)
+        for nama, baris in gov_functions().items():
+            _tulis(gov, f"functions/gov/{nama}.mcfunction",
+                   "\n".join(baris) + "\n")
         write_png(os.path.join(gov, "pack_icon.png"), 128, 128,
                   make_icon(accent=(251, 191, 36)))
         _tulis(gov, "manifest.json", json.dumps(

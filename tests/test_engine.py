@@ -407,6 +407,8 @@ class TestAddonForge(unittest.TestCase):
                 for entry in zf.namelist():
                     if not entry.endswith(".mcfunction"):
                         continue
+                    if "/functions/gov/" in entry:
+                        continue          # fungsi internal governor, diuji terpisah
                     nama.add(entry.rsplit("/", 1)[-1][:-len(".mcfunction")])
                     isi = zf.read(entry).decode("utf-8")
                     for baris in isi.splitlines():
@@ -432,13 +434,15 @@ class TestAddonForge(unittest.TestCase):
                 self.assertEqual(man["modules"][1]["type"], "script")
                 js = zf.read("CRVX_AutoGovernor_BP/scripts/main.js").decode("utf-8")
                 for wajib in ("import { world, system }", "system.runInterval",
-                              "randomtickspeed", "setActionBar", "chatSend",
+                              "function gov/l", "function gov/profil_",
+                              "setActionBar", "chatSend",
                               "try {", "world.getDimension"):
                     self.assertIn(wajib, js)
                 self.assertEqual(js.count("import "), 2, "server + server-ui")
                 for wajib2 in ("ActionFormData", "@minecraft/server-ui",
-                               "KP = ", "integral", "PANAS_NAIK", "AMAN_CULL",
-                               "excludeTypes", "form.show", "setDynamicProperty"):
+                               "KP = ", "integral", "PANAS_NAIK",
+                               "form.show", "setDynamicProperty",
+                               "KOOLDAUN", "function gov/l", "naikBeruntun"):
                     self.assertIn(wajib2, js)
                 self.assertNotIn("@@", js, "token template tidak boleh tersisa")
 
@@ -502,11 +506,18 @@ class TestFoliage(unittest.TestCase):
                      "vine", "tallgrass", "deadbush", "waterlily", "sapling_oak",
                      "mushroom_red", "flower_dandelion"):
             self.assertIn(f"textures/blocks/{nama}.png", ent)
-        for nama in ("tallgrass", "leaves_oak_opaque", "vine", "deadbush"):
+        for nama in ("tallgrass", "vine", "deadbush"):
             stat = foliage.alpha_stats(ent[f"textures/blocks/{nama}.png"][2])
             self.assertEqual(stat["blend"], 0,
                              f"{nama} harus alpha biner (0 piksel blend)")
             self.assertGreater(stat["opak"], 20)
+        # REGRESI: leaves_*_opaque WAJIB opak penuh. Versi berlubang membuat
+        # blok daun jadi cutout -> permukaan daun yang digambar meledak.
+        for nama in ("leaves_oak_opaque", "leaves_birch_opaque", "leaves_jungle_opaque"):
+            stat = foliage.alpha_stats(ent[f"textures/blocks/{nama}.png"][2])
+            self.assertEqual(stat["transparan"], 0, f"{nama} tidak boleh berlubang")
+            self.assertEqual(stat["blend"], 0)
+            self.assertEqual(stat["opak"], 256)
         stat = foliage.alpha_stats(ent["textures/blocks/glass.png"][2])
         self.assertGreater(stat["blend"], 0, "kaca memang harus translusen")
 
@@ -524,6 +535,20 @@ class TestBlackHole(unittest.TestCase):
         ring = rows[int(64 * 0.515 - 64 * 0.152 * 1.13)][32 * 4:32 * 4 + 3]
         pojok = rows[2][2 * 4:2 * 4 + 3]
         self.assertGreater(sum(ring), sum(pojok) + 60)
+
+    def test_fungsi_gov_satu_perintah_per_level(self):
+        from crvx.addonforge import gov_functions
+        f = gov_functions()
+        for nama in ("l0", "l1", "l2", "l3", "profil_turbo",
+                     "profil_hemat", "profil_ganas", "afk"):
+            self.assertIn(nama, f)
+            self.assertTrue(f[nama], f"{nama} kosong")
+        # eskalasi kumulatif & idempoten
+        self.assertTrue(set(f["l1"]).issuperset(set(f["l0"]) - {"gamerule dofiretick true"}))
+        self.assertIn("gamerule randomtickspeed 0", f["l2"])
+        self.assertIn("gamerule domobspawning false", f["l3"])
+        for baris in f["l3"]:
+            self.assertFalse(baris.startswith("/"))
 
     def test_enam_ikon_tombol(self):
         from crvx import blackhole
