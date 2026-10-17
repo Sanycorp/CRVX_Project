@@ -168,7 +168,11 @@ class Engine:
                     "body": generators.termux_script(plan, dev)}
         if fmt == "ondevice":
             return {"filename": f"crvx-{plan.mode_id}fps-ondevice.sh",
-                    "body": generators.ondevice_script(plan, dev, root=dev.rooted)}
+                    "body": generators.ondevice_script(plan, dev, root=dev.rooted),
+                    "extra": generators.ondevice_undo_script(plan, dev, root=dev.rooted)}
+        if fmt == "ondevice-undo":
+            return {"filename": f"crvx-undo-{plan.mode_id}fps-ondevice.sh",
+                    "body": generators.ondevice_undo_script(plan, dev, root=dev.rooted)}
         if fmt == "md":
             return {"filename": f"crvx-{plan.mode_id}fps-report.md",
                     "body": generators.markdown_report(plan, dev)}

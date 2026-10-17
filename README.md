@@ -40,11 +40,19 @@ Tanpa PC? Skrip siap jalan sudah ada di **`boost/`**:
 | `boost/120/boost-120-fps.bat` | Windows + adb |
 | `boost/120/termux-120-fps.sh` | **tanpa PC**: Termux pairing ke HP sendiri |
 | `boost/120/ondevice-120-fps.sh` | Shizuku / LADB / root shell di HP |
-| `boost/120/undo-120-fps.sh` | batalkan semua |
+| `boost/120/undo-120-ondevice.sh` | **batalkan** dari dalam shell HP (tanpa prefiks `adb`) |
+| `boost/120/undo-120.sh` / `undo-120.bat` | batalkan semua dari PC |
+| `boost/poco-m3-pro-5g/` | skrip device-exact POCO M3 Pro 5G (Dimensity 700, panel 90 Hz, engine cap 60 FPS) |
 
 Folder `boost/60/` dan `boost/90/` isinya sama untuk mode lain.
-Skrip ini dibuat dari profil generik — jalankan `python3 -m crvx export --mode 120 --outdir boost`
-dengan HP tersambung supaya nilainya (resolusi, refresh rate, versi Minecraft) persis perangkatmu.
+Skrip di `boost/60|90|120/` dibuat dari profil generik — jalankan
+`python3 -m crvx export --mode 120 --outdir boost` dengan HP tersambung supaya nilainya
+(resolusi, refresh rate, versi Minecraft) persis perangkatmu.
+
+Skrip on-device sadar bahwa Android 11+ memblokir akses shell ke `/sdcard/Android/data/`:
+kalau `options.txt` tidak bisa ditulis, skrip melewati bagian itu dan mencetak nilai yang
+harus kamu atur manual lewat **Minecraft → Settings → Video** (atau lewat file manager
+ber-Shizuku seperti Material Files / MT Manager).
 
 ---
 

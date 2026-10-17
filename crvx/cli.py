@@ -398,7 +398,9 @@ def cmd_export(args: argparse.Namespace) -> int:
         elif fmt == "ondevice":
             path = os.path.join(outdir, f"crvx-{plan.mode_id}fps-ondevice.sh")
             _write(path, generators.ondevice_script(plan, dev, root=args.root))
-            written.append(path)
+            upath = os.path.join(outdir, f"crvx-undo-{plan.mode_id}fps-ondevice.sh")
+            _write(upath, generators.ondevice_undo_script(plan, dev, root=args.root))
+            written += [path, upath]
         elif fmt == "md":
             path = os.path.join(outdir, f"crvx-{plan.mode_id}fps-report.md")
             _write(path, generators.markdown_report(plan, dev))

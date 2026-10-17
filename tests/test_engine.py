@@ -315,7 +315,8 @@ class TestGenerators(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             for name, body in (("a.sh", script), ("b.sh", undo),
                                ("c.sh", generators.termux_script(plan, dev)),
-                               ("d.sh", generators.ondevice_script(plan, dev, root=True))):
+                               ("d.sh", generators.ondevice_script(plan, dev, root=True)),
+                               ("e.sh", generators.ondevice_undo_script(plan, dev))):
                 path = os.path.join(tmp, name)
                 with open(path, "w", encoding="utf-8") as fh:
                     fh.write(body)
@@ -336,6 +337,30 @@ class TestGenerators(unittest.TestCase):
         self.assertIn("# CRVX TURBOFRAME", report)
         self.assertIn("## Proyeksi", report)
         self.assertIn("gfx_viewdistance", report)
+
+    def test_ondevice_undo_runs_inside_device_shell(self):
+        """Undo on-device ditempel ke LADB/Shizuku: tidak boleh ada prefiks adb."""
+        sim, dev = make_device()
+        plan = Planner(sim).plan(dev, "120", risk="root")
+        undo = generators.ondevice_undo_script(plan, dev, root=False)
+        self.assertIn("#!/system/bin/sh", undo)
+        self.assertNotIn("adb ", undo)
+        self.assertIn("settings delete", undo)
+        self.assertIn("device_config delete", undo)
+        self.assertIn("optbisa()", undo)
+        restores = [l for l in undo.splitlines()
+                    if l.strip() and not l.startswith("#") and not l.startswith("echo")]
+        self.assertTrue(len(restores) > 5, "terlalu sedikit perintah pemulihan")
+
+    def test_ondevice_guards_unwritable_options_txt(self):
+        """Android 11+: options.txt tak terbaca dari shell -> skrip harus sadar & memberi nilai manual."""
+        sim, dev = make_device()
+        plan = Planner(sim).plan(dev, "120")
+        script = generators.ondevice_script(plan, dev, root=False)
+        self.assertIn("optbisa()", script)
+        self.assertIn("[LEWAT]", script)
+        self.assertIn("gfx_viewdistance = ", script)
+        self.assertIn(dev.minecraft.options_path, script)
 
 
 class TestServerApi(unittest.TestCase):

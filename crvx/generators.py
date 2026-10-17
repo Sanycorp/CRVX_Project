@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shlex
 from typing import Dict, List, Optional, Tuple
 
@@ -261,16 +262,129 @@ def ondevice_script(plan: Plan, dev: Device, root: bool = False) -> str:
         "# Jalankan lewat Shizuku (adb permission), LADB, atau `su` di Termux.",
         "",
     ]
+    opt_var = _options_path(plan)
+    lines += [
+        f"OPT='{opt_var}'",
+        "",
+        "optbisa() {",
+        "  [ -f \"$OPT\" ] && [ -r \"$OPT\" ] && [ -w \"$OPT\" ] && return 0",
+        "  return 1",
+        "}",
+        "",
+    ]
+    warned: List[str] = []
     for step in _flatten(plan):
         lines.append(f"echo '== {step.rule.title}'")
-        for cmd in step.commands:
+        opt_cmds = [c for c in step.commands if "options.txt" in c.shell]
+        plain = [c for c in step.commands if "options.txt" not in c.shell]
+        for cmd in plain:
             body = cmd.shell.replace("'", "'\\''")
             tail = "" if cmd.shell.rstrip().endswith(("|| true", "||:")) else " || true"
             if root or cmd.root:
                 lines.append(f"su -c '{body}'{tail}")
             else:
                 lines.append(f"{cmd.shell}{tail}")
+        if opt_cmds:
+            lines.append("if optbisa; then")
+            for cmd in opt_cmds:
+                tail = "" if cmd.shell.rstrip().endswith(("|| true", "||:")) else " || true"
+                lines.append(f"  {cmd.shell}{tail}")
+            lines += [
+                "else",
+                "  echo '  [LEWAT] options.txt tidak bisa ditulis dari shell non-root.'",
+                "  echo '          Android 11+ memblokir akses ke /sdcard/Android/data/.'",
+                "  echo '          Atur manual di Minecraft -> Settings -> Video (nilai di bawah),'",
+                "  echo '          atau pakai file manager ber-Shizuku (Material Files / MT Manager).'",
+            ]
+            for cmd in opt_cmds:
+                key, val = _options_key_value(cmd.shell)
+                if key and key not in warned:
+                    warned.append(key)
+                    lines.append(f"  echo '            {key} = {val}'")
+            lines.append("fi")
     lines.append("echo 'Selesai.'")
+    return "\n".join(lines) + "\n"
+
+
+def _options_path(plan: Plan) -> str:
+    for step in _flatten(plan):
+        for cmd in step.commands:
+            match = re.search(r"(\S*options\.txt)", cmd.shell)
+            if match:
+                return match.group(1)
+    dev = plan.device
+    return getattr(dev.minecraft, "options_path", "") or \
+        "/sdcard/Android/data/com.mojang.minecraftpe/files/games/com.mojang/minecraftpe/options.txt"
+
+
+def _options_key_value(cmd: str) -> Tuple[str, str]:
+    """Ambil (key, value) dari perintah grep/sed/echo yang menyunting options.txt."""
+    match = re.search(r"\^([A-Za-z0-9_]+):", cmd)
+    key = match.group(1) if match else ""
+    match = re.search(r"'([A-Za-z0-9_]+):([^']*)'\s*>>", cmd)
+    if match:
+        return match.group(1), match.group(2)
+    match = re.search(r"/\^([A-Za-z0-9_]+):[^/]*/", cmd)
+    return key, ""
+
+
+def ondevice_undo_script(plan: Plan, dev: Device, root: bool = False) -> str:
+    """Skrip pemulihan untuk shell perangkat (Shizuku/LADB/`su`).
+
+    Pasangan `ondevice_script`: hanya berisi perintah `undo` sehingga bisa
+    ditempel langsung ke terminal LADB/Shizuku tanpa prefiks `adb shell`.
+    """
+    lines: List[str] = [
+        "#!/system/bin/sh",
+        f"# {BANNER} - UNDO {plan.mode_name}  [ON-DEVICE {'ROOT' if root else 'SHELL'}]",
+        "# Mengembalikan semua setelan ke kondisi sebelum boost dijalankan.",
+        "# Tempel isi file ini ke terminal LADB / Shizuku / `su` di Termux.",
+        "",
+        "echo '== CRVX UNDO: mengembalikan setelan awal'",
+    ]
+    opt_var = _options_path(plan)
+    lines += [
+        f"OPT='{opt_var}'",
+        "",
+        "optbisa() {",
+        "  [ -f \"$OPT\" ] && [ -r \"$OPT\" ] && [ -w \"$OPT\" ] && return 0",
+        "  return 1",
+        "}",
+        "",
+    ]
+    count = 0
+    for step in _flatten(plan):
+        restorable = [c for c in step.commands if c.undo]
+        if not restorable:
+            continue
+        lines.append(f"echo '-- {step.rule.title}'")
+        opt_cmds = [c for c in restorable if "options.txt" in c.undo]
+        for cmd in [c for c in restorable if "options.txt" not in c.undo]:
+            tail = "" if cmd.undo.rstrip().endswith(("|| true", "||:")) else " || true"
+            if root or cmd.root:
+                body = cmd.undo.replace("'", "'\\''")
+                lines.append(f"su -c '{body}'{tail}")
+            else:
+                lines.append(f"{cmd.undo}{tail}")
+            count += 1
+        if opt_cmds:
+            lines.append("if optbisa; then")
+            for cmd in opt_cmds:
+                tail = "" if cmd.undo.rstrip().endswith(("|| true", "||:")) else " || true"
+                lines.append(f"  {cmd.undo}{tail}")
+                count += 1
+            lines += [
+                "else",
+                "  echo '  [LEWAT] options.txt tidak bisa ditulis dari shell non-root.'",
+                "  echo '          Kembalikan nilai grafis lewat Minecraft -> Settings -> Video.'",
+                "fi",
+            ]
+    lines += [
+        "",
+        f"echo 'Selesai: {count} setelan dikembalikan.'",
+        "echo 'Catatan: nilai yang dibaca saat boost dijalankan adalah acuan; jika suatu'",
+        "echo '         setelan belum pernah diubah, perintah di atas tidak berbahaya.'",
+    ]
     return "\n".join(lines) + "\n"
 
 
