@@ -219,7 +219,7 @@ def _tulis(root: str, rel: str, isi: str) -> None:
         fh.write(isi)
 
 
-def build_addon(out_path: str, version: Sequence[int] = (1, 0, 0),
+def build_addon(out_path: str, version: Sequence[int] = (1, 1, 0),
                 fog_strength: float = 0.85, governor: bool = True,
                 interval: int = 60, window: int = 6,
                 texture_res: int = 8) -> str:

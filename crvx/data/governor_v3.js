@@ -29,13 +29,30 @@ let profilSiap = false, dimensiAktif = "", itemTerakhir = 0, tpsTerakhir = 20;
 let panas = 0, integral = 0, errSebelum = 0;
 let intervalId = null, intervalCur = INTERVAL;
 let posSebelum = null, diamTick = 0, afk = false;
-let learned = Number(world.getDynamicProperty("crvx:learn") || 0);
-
-let aktif = world.getDynamicProperty("crvx:aktif") !== 0;
-let hud = world.getDynamicProperty("crvx:hud") !== 0;
-let basis = world.getDynamicProperty("crvx:basis") || "turbo";
+// state dibaca LAZY: getDynamicProperty di top-level bisa melempar sebelum
+// dunia siap, dan satu lemparan di top-level mematikan SELURUH modul (inilah
+// penyebab klasik "!crvx tidak menanggapi apa-apa").
+let learned = 0;
+let aktif = true;
+let hud = true;
+let basis = "turbo";
+let stateTermuat = false;
 
 function aman(fn) { try { return fn(); } catch (e) { return null; } }
+
+function muatState() {
+  aman(() => {
+    const l = world.getDynamicProperty("crvx:learn");
+    if (typeof l === "number") learned = l;
+    const a = world.getDynamicProperty("crvx:aktif");
+    if (a !== undefined) aktif = a !== 0;
+    const h = world.getDynamicProperty("crvx:hud");
+    if (h !== undefined) hud = h !== 0;
+    const b = world.getDynamicProperty("crvx:basis");
+    if (typeof b === "string" && b) basis = b;
+    stateTermuat = true;
+  });
+}
 function perintah(dim, cmd) { aman(() => dim.runCommand(cmd)); }
 
 function terapkanProfil(dim, mode) {
@@ -109,6 +126,7 @@ function setSampel(tick) {
 }
 
 function sample() {
+  if (!stateTermuat) muatState();
   const pemain = aman(() => world.getPlayers()) || [];
   if (!aktif || pemain.length === 0) { terakhir = Date.now(); return; }
 
@@ -249,6 +267,7 @@ function jalankan(pemain, idx) {
   aman(() => bukaMenu(pemain));   // menu tetap terbuka setelah aksi
 }
 
+muatState();
 intervalId = system.runInterval(sample, INTERVAL);
 
 aman(() => world.beforeEvents.chatSend.subscribe((ev) => {
@@ -276,10 +295,14 @@ aman(() => world.beforeEvents.chatSend.subscribe((ev) => {
   });
 }));
 
-world.afterEvents.worldLoad.subscribe(() => {
+// pesan ini SELALU dikirim (walau governor nonaktif) supaya kita bisa
+// memastikan skrip benar-benar termuat - dan membedakannya dari pack lama.
+aman(() => world.afterEvents.worldLoad.subscribe(() => {
   system.runTimeout(() => {
-    if (!aktif) return;
-    world.sendMessage(TAG + "AutoGovernor v3 siaga. Ketik \u00a7d!crvx\u00a7r untuk " +
-      "membuka menu lubang hitam. Level awal sesi ini: " + LABEL[learned] + ".");
+    muatState();
+    world.sendMessage(TAG + "\u00a7lv3.1\u00a7r termuat" +
+      (aktif ? " & AKTIF" : " (nonaktif - ketik !crvx nyala)") +
+      ". Ketik \u00a7d!crvx\u00a7r untuk menu lubang hitam. Level awal: " +
+      LABEL[learned] + ".");
   }, 40);
-});
+}));
