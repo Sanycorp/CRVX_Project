@@ -3,7 +3,7 @@
 # Perangkat : Generic Android (profil generik)
 # Android   : 14 (SDK 34)  |  panel 120 Hz
 # Target    : 60 FPS  (perkiraan tercapai 55.0 FPS)
-# Plan ID   : 7d1b58670fa7
+# Plan ID   : 6c18c98927ce
 # Jalankan : bash <nama-file>.sh   (batalkan: bash crvx-undo.sh)
 set -u
 

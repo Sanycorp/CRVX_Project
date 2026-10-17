@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
-REM CRVX TURBOFRAME - MODE 90 FPS  (plan 370bc45c286f)
+REM CRVX TURBOFRAME - MODE 90 FPS  (plan eb09405d4224)
 REM Perangkat:  Generic Android | Android 14
 set "ADB=%ADB%"
 if "%ADB%"=="" set "ADB=adb"

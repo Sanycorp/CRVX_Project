@@ -1,6 +1,6 @@
 # CRVX TURBOFRAME - MODE 60 FPS
 
-- **Plan ID**: `7d1b58670fa7`
+- **Plan ID**: `6c18c98927ce`
 - **Perangkat**:   Generic Android (nyata)
 - **SoC**: tidak dikenal | tier **MID**
 - **Android**: 14 (SDK 34) | RAM 6 GB

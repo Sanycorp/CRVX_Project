@@ -265,10 +265,11 @@ def ondevice_script(plan: Plan, dev: Device, root: bool = False) -> str:
         lines.append(f"echo '== {step.rule.title}'")
         for cmd in step.commands:
             body = cmd.shell.replace("'", "'\\''")
+            tail = "" if cmd.shell.rstrip().endswith(("|| true", "||:")) else " || true"
             if root or cmd.root:
-                lines.append(f"su -c '{body}' || true")
+                lines.append(f"su -c '{body}'{tail}")
             else:
-                lines.append(f"{cmd.shell} || true")
+                lines.append(f"{cmd.shell}{tail}")
     lines.append("echo 'Selesai.'")
     return "\n".join(lines) + "\n"
 

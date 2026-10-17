@@ -3,7 +3,7 @@
 # Jalankan lewat Shizuku (adb permission), LADB, atau `su` di Termux.
 
 echo '== Backup options.txt sebelum disentuh'
-cp /sdcard/Android/data/com.mojang.minecraftpe/files/games/com.mojang/minecraftpe/options.txt /data/local/tmp/crvx_options_backup.txt 2>/dev/null || true || true
+cp /sdcard/Android/data/com.mojang.minecraftpe/files/games/com.mojang/minecraftpe/options.txt /data/local/tmp/crvx_options_backup.txt 2>/dev/null || true
 echo '== Matikan Battery Saver & pembatas performa'
 settings put global low_power 0 || true
 settings put global battery_saver_enabled 0 || true
@@ -58,7 +58,7 @@ cmd appops set com.mojang.minecraftpe RUN_ANY_IN_BACKGROUND allow || true
 cmd appops set com.mojang.minecraftpe WAKE_LOCK allow || true
 echo '== Bersihkan memori background sebelum sesi'
 am kill-all || true
-cmd package bg-dexopt-job 2>/dev/null || true || true
+cmd package bg-dexopt-job 2>/dev/null || true
 echo '== Mode fokus: DND + layar tetap menyala saat sesi'
 cmd notification set_dnd on || true
 settings put global stay_on_while_plugged_in 3 || true

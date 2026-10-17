@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-REM CRVX TURBOFRAME - UNDO plan 7d1b58670fa7
+REM CRVX TURBOFRAME - UNDO plan 6c18c98927ce
 if "%ADB%"=="" set "ADB=adb"
 set "SERIAL="
 if not "%SERIAL%"=="" (set "T=-s %SERIAL%") else (set "T=")
