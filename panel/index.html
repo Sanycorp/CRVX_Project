@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CRVX TurboFrame — FPS Boost Engine · Minecraft Bedrock/PE</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230b0d14'/><path d='M6 22 L12 10 L16 18 L20 8 L26 22' stroke='%23f472b6' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="bg-glow" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
+      <path d="M5 30 L13 12 L19 24 L25 7 L35 30" fill="none" stroke="url(#g1)" stroke-width="3.2"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#f472b6"/><stop offset="1" stop-color="#38bdf8"/>
+      </linearGradient></defs>
+    </svg>
+    <div class="brand-text">
+      <strong>CRVX <span>TURBOFRAME</span></strong>
+      <small>FPS Boost Engine · Minecraft Bedrock / MCPE Android · <span id="engine-version">…</span></small>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span class="chip" id="chip-transport"><i class="dot"></i>transport</span>
+    <span class="chip" id="chip-device">perangkat</span>
+    <span class="chip" id="chip-tier">tier</span>
+    <span class="chip" id="chip-thermal">termal</span>
+    <button class="btn ghost" id="btn-rescan" title="Deteksi ulang perangkat">
+      <svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+      Deteksi Ulang
+    </button>
+  </div>
+</header>
+
+<main class="grid">
+
+  <!-- ======================= PERANGKAT ======================= -->
+  <section class="card span-4" id="card-device">
+    <div class="card-head">
+      <h2>Intel Perangkat</h2>
+      <span class="tag" id="device-sim-badge" hidden>SIMULATOR</span>
+    </div>
+    <div class="card-body" id="device-body">
+      <p class="muted">Memuat…</p>
+    </div>
+    <div class="capability" id="capability"></div>
+  </section>
+
+  <!-- ======================= MODE ======================= -->
+  <section class="card span-8" id="card-modes">
+    <div class="card-head">
+      <h2>Mode FPS</h2>
+      <div class="head-actions">
+        <label class="switch" title="Sertakan resource pack fog-cut">
+          <input type="checkbox" id="opt-pack"><span></span><em>+ Pack Fog-Cut</em>
+        </label>
+        <label class="select-label">Batas risiko
+          <select id="opt-risk">
+            <option value="">ikut mode</option>
+            <option value="safe">safe</option>
+            <option value="moderate">moderate</option>
+            <option value="advanced">advanced</option>
+            <option value="root">root</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="mode-grid" id="mode-grid"></div>
+      <div class="apply-row">
+        <div class="apply-info">
+          <span id="apply-summary">Pilih mode untuk melihat rencana</span>
+          <small id="apply-risknote"></small>
+        </div>
+        <label class="switch" title="Hanya tampilkan perintah, tidak dijalankan">
+          <input type="checkbox" id="opt-dryrun"><span></span><em>Dry run</em>
+        </label>
+        <button class="btn primary" id="btn-plan">Susun Rencana</button>
+        <button class="btn go" id="btn-apply">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> TERAPKAN
+        </button>
+        <button class="btn danger" id="btn-undo" title="Kembalikan semua perubahan">UNDO</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= PROYEKSI ======================= -->
+  <section class="card span-5" id="card-projection">
+    <div class="card-head"><h2>Proyeksi Engine</h2><span class="tag" id="proj-mode">—</span></div>
+    <div class="card-body proj-body">
+      <canvas id="gauge" width="320" height="190"></canvas>
+      <div class="proj-numbers" id="proj-numbers"></div>
+      <ul class="notes" id="proj-notes"></ul>
+    </div>
+  </section>
+
+  <!-- ======================= BENCHMARK ======================= -->
+  <section class="card span-7" id="card-bench">
+    <div class="card-head">
+      <h2>Telemetri FPS Nyata</h2>
+      <div class="head-actions">
+        <select id="bench-duration">
+          <option value="6">6 dtk</option>
+          <option value="10" selected>10 dtk</option>
+          <option value="15">15 dtk</option>
+          <option value="25">25 dtk</option>
+        </select>
+        <button class="btn ghost" id="btn-bench-before">Ukur SEBELUM</button>
+        <button class="btn primary" id="btn-bench-after">Ukur SESUDAH</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <canvas id="fps-chart" width="900" height="180"></canvas>
+      <div class="bench-stats" id="bench-stats"></div>
+      <div class="compare" id="bench-compare" hidden></div>
+      <p class="hint">Buka Minecraft, masuk ke dunia, lalu jalankan pengukuran. Sumber data:
+        <code>dumpsys SurfaceFlinger --latency</code> → fallback <code>gfxinfo framestats</code>.
+        Timestamp di-dedupe sehingga tidak ada frame yang dihitung dua kali.</p>
+    </div>
+  </section>
+
+  <!-- ======================= RENCANA ======================= -->
+  <section class="card span-8" id="card-plan">
+    <div class="card-head">
+      <h2>Rencana Optimasi <span class="tag" id="plan-id">—</span></h2>
+      <div class="head-actions">
+        <span class="muted" id="plan-count"></span>
+        <button class="btn ghost small" id="btn-plan-toggle">Lipat semua</button>
+      </div>
+    </div>
+    <div class="card-body plan-body" id="plan-body">
+      <p class="muted">Belum ada rencana. Pilih mode lalu tekan <b>Susun Rencana</b>.</p>
+    </div>
+    <details class="skipped" id="skipped-wrap" hidden>
+      <summary id="skipped-summary">Aturan yang dilewati</summary>
+      <div id="skipped-body"></div>
+    </details>
+  </section>
+
+  <!-- ======================= GOVERNOR ======================= -->
+  <section class="card span-4" id="card-governor">
+    <div class="card-head">
+      <h2>Adaptive Frame Governor</h2>
+      <span class="tag">PID</span>
+    </div>
+    <div class="card-body">
+      <div class="gov-controls">
+        <button class="btn ghost small" id="btn-gov-tick">1 Tick</button>
+        <button class="btn primary small" id="btn-gov-auto">Auto Loop</button>
+        <label class="switch"><input type="checkbox" id="gov-apply"><span></span><em>Eksekusi tindakan</em></label>
+      </div>
+      <div class="gov-live" id="gov-live">
+        <div class="gov-fps"><span id="gov-fps">—</span><small>FPS terukur</small></div>
+        <div class="gov-meta" id="gov-meta"></div>
+      </div>
+      <div class="quality-bar"><i id="quality-fill"></i><span id="quality-label">kualitas —</span></div>
+      <div class="gov-log" id="gov-log"></div>
+      <p class="hint">Kontroler closed-loop: menahan FPS sedekat target dengan mengorbankan
+        kualitas sesedikit mungkin, dan menurunkan target otomatis saat termal memburuk.</p>
+    </div>
+  </section>
+
+  <!-- ======================= EXPORT ======================= -->
+  <section class="card span-6" id="card-export">
+    <div class="card-head"><h2>Ekspor Skrip Siap Jalan</h2></div>
+    <div class="card-body">
+      <div class="export-grid" id="export-grid">
+        <a class="export" href="/api/export/sh" download><b>Linux / macOS</b><span>crvx-boost.sh + crvx-undo.sh</span></a>
+        <a class="export" href="/api/export/bat" download><b>Windows</b><span>crvx-boost.bat + undo</span></a>
+        <a class="export" href="/api/export/termux" download><b>Termux (tanpa PC)</b><span>pairing ADB nirkabel ke HP sendiri</span></a>
+        <a class="export" href="/api/export/ondevice" download><b>On-device</b><span>Shizuku / LADB / root shell</span></a>
+        <a class="export" href="/api/export/md" download><b>Laporan</b><span>markdown lengkap + proyeksi</span></a>
+        <a class="export" href="/api/export/json" download><b>Plan JSON</b><span>data rencana mentah</span></a>
+        <a class="export pack" href="/api/pack" download><b>CRVX Fog-Cut .mcpack</b><span>resource pack sah (bukan mod APK)</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= options.txt ======================= -->
+  <section class="card span-6" id="card-options">
+    <div class="card-head"><h2>options.txt Bedrock</h2><span class="tag" id="options-path">—</span></div>
+    <div class="card-body">
+      <div class="options-grid" id="options-grid"></div>
+    </div>
+  </section>
+
+  <!-- ======================= LOG ======================= -->
+  <section class="card span-12" id="card-log">
+    <div class="card-head">
+      <h2>Konsol</h2>
+      <div class="head-actions">
+        <span class="muted" id="journal-count"></span>
+        <button class="btn ghost small" id="btn-clear-log">Bersihkan</button>
+      </div>
+    </div>
+    <div class="card-body"><pre class="log" id="log"></pre></div>
+  </section>
+</main>
+
+<footer class="footer">
+  <span>CRVX TurboFrame · engine <b id="footer-rev"></b> · tidak memodifikasi APK/game binary ·
+    semua perubahan punya jalur undo</span>
+</footer>
+
+<div class="toast-wrap" id="toasts"></div>
+<script src="/app.js"></script>
+</body>
+</html>

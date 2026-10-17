@@ -1,0 +1,23 @@
+# artefak build / keluaran generator
+dist/
+build/
+out/
+*.mcpack
+*.mcaddon
+
+# state runtime engine (jurnal undo, backup, rencana, cache)
+.crvx/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# editor / os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

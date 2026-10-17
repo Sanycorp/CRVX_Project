@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crvx-turboframe"
+version = "2026.10.1"
+description = "FPS Boost Engine untuk Minecraft Bedrock/PE (Android) - mode 60/90/120/144 FPS"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Sanycorp" }]
+keywords = ["minecraft", "bedrock", "mcpe", "fps", "android", "adb", "performance"]
+dependencies = []
+
+[project.scripts]
+crvx = "crvx.cli:main"
+
+[tool.setuptools]
+packages = ["crvx"]
+
+# Control Panel (panel/) dibaca dari root repo lewat path relatif crvx/server.py.
+# Untuk instalasi ter-isolasi, jalankan dari checkout repo ini.
