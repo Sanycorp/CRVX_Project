@@ -924,3 +924,189 @@ class TestServerApi(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestGearForge(unittest.TestCase):
+    """Armor 3D + pedang: geometry, attachable, item, resep, tekstur.
+
+    Batas sahih diambil dari Mojang/bedrock-samples dan skema resmi
+    MicrosoftDocs/minecraft-creator (lihat docstring crvx.gearforge).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from crvx import gearforge
+        cls.g = gearforge
+        cls.geos = {b: gearforge.GEOMETRIES[b]()[0] for b in gearforge.BAGIAN}
+        cls.rows = {b: gearforge.GEOMETRIES[b]()[1] for b in gearforge.BAGIAN}
+
+    def bones(self, bagian):
+        return self.geos[bagian]["minecraft:geometry"][0]["bones"]
+
+    def test_geometry_memakai_kerangka_pemain_vanilla(self):
+        wajib = {"waist", "body", "head", "rightArm", "leftArm",
+                 "rightLeg", "leftLeg"}
+        for bagian in ("helmet", "chestplate", "leggings", "boots"):
+            nama = {b["name"] for b in self.bones(bagian)}
+            self.assertTrue(wajib <= nama,
+                            f"{bagian}: tulang pemain hilang {wajib - nama}")
+            peta = {b["name"]: b for b in self.bones(bagian)}
+            self.assertEqual(peta["body"]["parent"], "waist")
+            self.assertEqual(peta["head"]["parent"], "body")
+            self.assertEqual(peta["rightArm"]["pivot"], [-5.0, 22.0, 0.0],
+                             "pivot lengan harus sama dengan vanilla")
+            self.assertEqual(peta["rightLeg"]["pivot"], [-1.9, 12.0, 0.0])
+            # yang tidak dipakai potongan ini harus neverRender
+            if bagian == "helmet":
+                self.assertTrue(peta["body"].get("neverRender"))
+                self.assertFalse(peta["head"].get("neverRender", False))
+
+    def test_pedang_menempel_di_tangan(self):
+        bones = self.bones("blade")
+        self.assertEqual(len(bones), 1)
+        utama = bones[0]
+        self.assertEqual(utama["name"], "bb_main")
+        self.assertEqual(utama["binding"],
+                         "q.item_slot_to_bone_name(context.item_slot)",
+                         "tanpa binding ini item tidak menempel di tangan")
+        self.assertTrue(utama["rotation"])
+        self.assertGreaterEqual(len(utama["cubes"]), 9,
+                                "pedang butuh gagang, guard, bilah bertingkat, ujung")
+
+    def test_uv_tidak_bocor(self):
+        for bagian in self.g.BAGIAN:
+            blok = self.geos[bagian]["minecraft:geometry"][0]
+            tw, th = blok["description"]["texture_width"], \
+                blok["description"]["texture_height"]
+            kotak = []
+            for b in blok["bones"]:
+                for c in b.get("cubes", []):
+                    w, h, d = c["size"]
+                    self.assertEqual([int(x) for x in c["size"]], list(c["size"]),
+                                     f"{bagian}: ukuran kubus harus bulat")
+                    u, v = c["uv"]
+                    bw, bh = 2 * (w + d), h + d
+                    self.assertLessEqual(u + bw, tw)
+                    self.assertLessEqual(v + bh, th)
+                    kotak.append((u, v, bw, bh))
+            for i, a in enumerate(kotak):
+                for bb in kotak[i + 1:]:
+                    tumpang = (a[0] < bb[0] + bb[2] and bb[0] < a[0] + a[2] and
+                               a[1] < bb[1] + bb[3] and bb[1] < a[1] + a[3])
+                    self.assertFalse(tumpang, f"{bagian}: UV tumpang {a} vs {bb}")
+
+    def test_attachable_lengkap_dan_konsisten(self):
+        att = self.g.attachables()
+        ids = [a["minecraft:attachable"]["description"]["identifier"]
+               for a in att.values()]
+        self.assertEqual(len(ids), len(set(ids)), "identifier attachable duplikat")
+        for bagian in self.g.PIECE:
+            self.assertIn(f"attachables/{self.g.NS}_{self.g.SERI}_{bagian}.json", att)
+            self.assertIn(f"attachables/{self.g.NS}_{self.g.SERI}_{bagian}.player.json",
+                          att, "varian .player wajib ada (pola vanilla)")
+        player = att[f"attachables/{self.g.NS}_{self.g.SERI}_helmet.player.json"]
+        desc = player["minecraft:attachable"]["description"]
+        self.assertIn(self.g.item_id("helmet"), desc["item"])
+        self.assertIn("minecraft:player",
+                      list(desc["item"].values())[0])
+        for nama, doc in att.items():
+            d = doc["minecraft:attachable"]["description"]
+            self.assertIn("default", d["materials"]); self.assertIn("enchanted", d["materials"])
+            self.assertTrue(d["render_controllers"])
+            self.assertTrue(d["geometry"]["default"].startswith("geometry."))
+        blade = att[f"attachables/{self.g.NS}_{self.g.SERI}_blade.player.json"]
+        anim = blade["minecraft:attachable"]["description"]["animations"]
+        self.assertEqual(anim["hold_first_person"],
+                         "animation.steve_head.hold_first_person")
+        self.assertEqual(anim["hold_third_person"],
+                         "animation.steve_head.hold_third_person")
+
+    def test_item_memakai_komponen_resmi(self):
+        import re as _re
+        for bagian in self.g.BAGIAN:
+            doc = self.g.item_json(bagian)
+            self.assertEqual(doc["format_version"], "1.21.100")
+            comp = doc["minecraft:item"]["components"]
+            self.assertEqual(doc["minecraft:item"]["description"]["menu_category"]
+                             ["category"], "equipment")
+            self.assertIn(comp["minecraft:enchantable"]["slot"],
+                          ("armor_head", "armor_torso", "armor_legs", "armor_feet",
+                           "sword"),
+                          "slot enchant di luar daftar resmi")
+            self.assertEqual(comp["minecraft:max_stack_size"], 1)
+            if bagian == "blade":
+                self.assertEqual(comp["minecraft:damage"]["value"],
+                                 self.g.DAMAGE_BLADE)
+                self.assertTrue(comp["minecraft:hand_equipped"]["value"])
+                self.assertEqual(comp["minecraft:wearable"], None) if False else None
+            else:
+                self.assertIn(comp["minecraft:wearable"]["slot"],
+                              ("slot.armor.head", "slot.armor.chest",
+                               "slot.armor.legs", "slot.armor.feet"))
+                self.assertIsInstance(comp["minecraft:wearable"]["protection"], int)
+            self.assertTrue(_re.fullmatch(r"[A-Z]", comp["minecraft:display_name"]
+                                          ["value"][0]),
+                            "nama harus literal Indonesia berhuruf kapital")
+
+    def test_resep_bisa_dibuat_di_survival(self):
+        resep = self.g.recipes()
+        self.assertEqual(len(resep), len(self.g.BAGIAN))
+        for nama, doc in resep.items():
+            rec = doc["minecraft:recipe_shaped"]
+            self.assertIn("crafting_table", rec["tags"])
+            self.assertTrue(rec["unlock"], "tanpa unlock resep tak muncul di buku resep")
+            pola = rec["pattern"]
+            self.assertLessEqual(len(pola), 3)
+            for baris in pola:
+                self.assertLessEqual(len(baris), 3)
+                for ch in baris:
+                    self.assertIn(ch, (" ",) + tuple(rec["key"]))
+            bahan = {v["item"] for v in rec["key"].values()}
+            self.assertTrue(bahan <= {"minecraft:netherite_ingot",
+                                      "minecraft:echo_shard",
+                                      "minecraft:blaze_rod"},
+                            f"{nama}: bahan tidak bisa didapat di survival {bahan}")
+
+    def test_tekstur_berdimensi_benar(self):
+        tex = self.g.textures()
+        for rel, (w, h, rows) in tex.items():
+            self.assertEqual(len(rows), h, rel)
+            self.assertEqual(len(rows[0]), w * 4, rel)
+            if rel.startswith("textures/items/"):
+                self.assertEqual((w, h), (16, 16), f"{rel}: ikon harus 16x16")
+            else:
+                self.assertEqual((w, h), (64, 64), f"{rel}: tekstur model 64x64")
+            transparan = {rows[y][x * 4 + 3] for y in range(h) for x in range(w)}
+            if rel.startswith("textures/items/"):
+                self.assertIn(0, transparan, f"{rel}: ikon butuh latar transparan")
+
+    def test_build_dan_verify_arsenal(self):
+        from crvx.addonforge import build_arsenal, verify_arsenal
+        with tempfile.TemporaryDirectory() as tmp:
+            path = build_arsenal(os.path.join(tmp, "arsenal.mcaddon"))
+            hasil = verify_arsenal(path)
+            self.assertTrue(hasil["ok"], hasil["problems"])
+            self.assertEqual(len(hasil["geometries"]), 5)
+            self.assertEqual(len(hasil["items"]), 5)
+            self.assertEqual(len(hasil["recipes"]), 5)
+            # verifier harus MENOLAK pack yang attachable-nya dirusak
+            import zipfile as _zip
+            rusak = os.path.join(tmp, "rusak.mcaddon")
+            with _zip.ZipFile(path) as zin, _zip.ZipFile(rusak, "w") as zout:
+                for item in zin.infolist():
+                    data = zin.read(item.filename)
+                    if item.filename.endswith("attachables/crvx_void_helmet.json"):
+                        data = data.replace(b"geometry.crvx.void_helmet",
+                                            b"geometry.tidak.ada")
+                    zout.writestr(item, data)
+            buruk = verify_arsenal(rusak)
+            self.assertFalse(buruk["ok"])
+            self.assertTrue(any("geometry" in p for p in buruk["problems"]))
+
+    def test_statistik_di_atas_netherite(self):
+        stat = self.g.statistik()
+        self.assertEqual(stat["proteksi_total"], 20,
+                         "20 = plafon armor Bedrock; lebih dari itu sia-sia")
+        self.assertGreater(stat["durability_rata"], stat["durability_netherite_rata"])
+        self.assertGreater(stat["damage_pedang"], stat["damage_netherite"])
+        self.assertGreater(stat["enchantability"], stat["enchantability_netherite"])
