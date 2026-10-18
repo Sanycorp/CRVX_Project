@@ -19,8 +19,8 @@ from .minecraft import merge as options_merge
 from .models import Device, Plan
 from .modes import all_modes, get_mode
 from .packforge import build_fogcut_pack, verify_pack
-from .addonforge import (build_addon, build_arsenal, verify_addon,
-                           verify_arsenal)
+from .addonforge import (build_addon, build_arsenal, build_sentinel,
+                           verify_addon, verify_arsenal, verify_sentinel)
 from .packforge import build_fogcut_pack as _fogcut  # noqa: F401
 from .texforge import build_texture_pack, build_downscaled_pack
 from .planner import BACKUP_DIR, CRVX_HOME, Journal, Planner
@@ -530,6 +530,54 @@ def cmd_arsenal(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sentinel(args: argparse.Namespace) -> int:
+    path = args.out or os.path.join(CRVX_HOME, "addon", "CRVX_Sentinel.mcaddon")
+    build_sentinel(path)
+    result = verify_sentinel(path)
+    head("SENTINELFORGE - CRVX SENTINEL")
+    if not result["ok"]:
+        bad("sentinel tidak valid:")
+        for problem in result["problems"]:
+            print(f"     {problem}")
+        return 1
+    ok(f"{path} ({result['size_bytes']} bytes, {len(result['entries'])} entri)")
+    for pack in result["packs"]:
+        dim(f"  - {pack['folder']}: {pack['name']} [{', '.join(pack['types'])}]")
+    from . import sentinelforge
+    stat = sentinelforge.statistik()
+    print()
+    dim(f"  entity        : {stat['entity']} - {stat['nama']}")
+    dim(f"  tempur        : {stat['nyawa']} HP (jinak {stat['nyawa_jinak']}), "
+        f"damage {stat['serangan']}, speed {stat['kecepatan']} (melayang)")
+    pem = stat["pembanding"]
+    dim(f"  pembanding    : iron golem {pem['iron_golem']['nyawa']} HP / "
+        f"{pem['iron_golem']['serangan']} dmg, wither skeleton "
+        f"{pem['wither_skeleton']['nyawa']} HP / "
+        f"{pem['wither_skeleton']['serangan']} dmg")
+    dim(f"  model         : {len(result['bones'])} bone, {result['cubes']} kubus, "
+        f"tekstur 64x64 buatan sendiri")
+    dim(f"  diburu        : {', '.join(result['buruan'])}")
+    dim(f"  tidak disentuh: {', '.join(stat['keluarga_aman'][:8])}, ...")
+    dim(f"  komponen resmi: {len(result['components'])} terverifikasi "
+        f"(0 bikinan)")
+    print()
+    dim("Pasang  : kirim .mcaddon ke HP -> buka -> Minecraft impor otomatis.")
+    dim("Aktifkan: Play > (pensil) dunia > Resource + Behavior Packs > Activate")
+    dim("          keduanya, lalu nyalakan 'Cheats' hanya bila mau pakai")
+    dim("          /scriptevent (Sentinel sendiri tidak butuh Cheats).")
+    dim("Panggil : crafting table = echo shard di atas netherite ingot -> telur,")
+    dim("          atau /summon crvx:sentinel (butuh Cheats).")
+    dim("Jinakkan: klik kanan Sentinel dengan echo shard -> ikut & melindungi.")
+    print()
+    dim("Lawan The Locust (mob yang kebal /kill):")
+    for c in stat["perintah"]:
+        dim(f"  {c}")
+    dim("  crvx:scan mencetak typeId semua entity dalam 32 blok, crvx:basmi")
+    dim("  memanggil Entity.remove() pada entity add-on - tanpa animasi mati,")
+    dim("  tanpa loot, jadi logika respawn/kebal-damage tidak sempat jalan.")
+    return 0
+
+
 def cmd_pack(args: argparse.Namespace) -> int:
     path = args.out or os.path.join(CRVX_HOME, "packs", "crvx-fogcut.mcpack")
     build_fogcut_pack(path, strength=args.strength)
@@ -728,6 +776,15 @@ def build_parser() -> argparse.ArgumentParser:
                                    "+ Pedang Singularitas (model 3D di tangan).")
     p.add_argument("--out", default="", help="path keluaran .mcaddon")
     p.set_defaults(func=cmd_arsenal)
+
+    p = sub.add_parser("sentinel",
+                       help="bangun .mcaddon penjaga anti-mob-add-on (Sentinel)",
+                       description="Sentinel Void: penjaga melayang yang memburu "
+                                   "mob musuh (termasuk entity add-on seperti The "
+                                   "Locust) + skrip crvx:scan/crvx:basmi yang "
+                                   "menghapus mob kebal /kill lewat Entity.remove().")
+    p.add_argument("--out", default="", help="path keluaran .mcaddon")
+    p.set_defaults(func=cmd_sentinel)
 
     p = sub.add_parser("pack", help="bangun .mcpack fog-cut", parents=[glob])
     p.add_argument("--out", default="")

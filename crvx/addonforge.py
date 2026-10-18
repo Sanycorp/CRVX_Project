@@ -27,8 +27,8 @@ import zipfile
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .packforge import make_icon, write_png
-from .texforge import texture_entries
-from . import blackhole, fogforge, foliage, gearforge
+from .texforge import read_png, texture_entries
+from . import blackhole, fogforge, foliage, gearforge, sentinelforge
 
 NAMESPACE = uuid.UUID("6f1c9a2e-4c7b-4d31-9c0a-2b7d5e8f1a40")
 # v3.3: mendeklarasikan versi API TERBARU (2.10.0 / 2.2.0) membuat seluruh
@@ -885,6 +885,443 @@ def verify_arsenal(path: str) -> Dict[str, object]:
                 if "/textures/models/" in n and (w, h) != (64, 64):
                     problems.append(f"{n}: tekstur model harus 64x64 (dapat {w}x{h})")
     except (zipfile.BadZipFile, OSError, KeyError, ValueError) as exc:
+        problems.append(f"gagal memeriksa: {exc}")
+    result["ok"] = not problems
+    return result
+
+
+# --------------------------------------------------------------------------- #
+# CRVX Sentinel - penjaga terbang pemburu mob add-on (The Locust dkk)
+# --------------------------------------------------------------------------- #
+SENTINEL_RP_NAME = "CRVX Sentinel - Model & Tekstur"
+SENTINEL_BP_NAME = "CRVX Sentinel - Penjaga & Pembersih"
+SENTINEL_RP = "CRVX_Sentinel_RP"
+SENTINEL_BP = "CRVX_Sentinel_BP"
+
+# 29 komponen + behavior yang terbukti ADA di 495 bentuk resmi
+# ``content/forms/entity`` (MicrosoftDocs/minecraft-creator) dan bentuk isinya
+# dicocokkan dengan entity vanilla (wither/iron_golem/parrot/bee/vex/wolf).
+# verify_sentinel menolak apa pun di luar daftar ini supaya tidak ada komponen
+# bikinan yang membuat entity gagal dimuat.
+SENTINEL_KOMPONEN = {
+    "minecraft:type_family", "minecraft:nameable", "minecraft:health",
+    "minecraft:attack", "minecraft:knockback_resistance", "minecraft:fire_immune",
+    "minecraft:physics", "minecraft:pushable", "minecraft:collision_box",
+    "minecraft:movement", "minecraft:movement.fly", "minecraft:navigation.fly",
+    "minecraft:jump.static", "minecraft:can_fly", "minecraft:breathable",
+    "minecraft:persistent", "minecraft:tameable", "minecraft:is_tamed",
+    "minecraft:behavior.hurt_by_target", "minecraft:behavior.owner_hurt_by_target",
+    "minecraft:behavior.owner_hurt_target",
+    "minecraft:behavior.nearest_attackable_target",
+    "minecraft:behavior.melee_attack", "minecraft:behavior.move_towards_target",
+    "minecraft:behavior.follow_owner", "minecraft:behavior.look_at_player",
+    "minecraft:behavior.random_look_around",
+}
+# Terbukti TIDAK ADA di bentuk resmi -> dilarang dipakai.
+SENTINEL_HARAM = ("minecraft:gravity", "minecraft:is_summonable",
+                  "minecraft:behavior.avoid_entity", "minecraft:event_receiver")
+# API @minecraft/server 2.0.0: yang TIDAK ADA dan pernah menggagalkan skrip.
+SKRIP_TERLARANG = ("Entity.kill(", ".isPlayer(", "chatSend", "kill @e",
+                   "@minecraft/server-ui")
+
+
+def build_sentinel(out_path: str, version: Sequence[int] = (1, 0, 0)) -> str:
+    """Bangun ``.mcaddon`` CRVX Sentinel (RP model + BP entity/item/skrip)."""
+    version = list(version)
+    out_path = os.path.abspath(out_path)
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    staging = out_path + ".src"
+    if os.path.exists(staging):
+        shutil.rmtree(staging)
+
+    stat = sentinelforge.statistik()
+
+    # ---- 1. Resource pack: client entity, geometry, tekstur, ikon, lang ----- #
+    rp = os.path.join(staging, SENTINEL_RP)
+    for sub in ("entity", os.path.join("models", "entity"),
+                os.path.join("textures", "entity"),
+                os.path.join("textures", "items"), "texts"):
+        os.makedirs(os.path.join(rp, sub), exist_ok=True)
+    write_png(os.path.join(rp, "pack_icon.png"), 128, 128,
+              blackhole.pack_icon(128, "ganas")[2])
+    _tulis(rp, "manifest.json", json.dumps(
+        manifest(SENTINEL_RP_NAME,
+                 "Model + tekstur Sentinel Void: konstruk melayang 12 kubus, "
+                 "halo ungu, dua bilah energi. Aset buatan sendiri, bukan milik "
+                 "Mojang.", version, "resources", MIN_ENGINE_RP),
+        indent=2, ensure_ascii=False))
+    for rel, doc in sentinelforge.client_entities().items():
+        _tulis(rp, rel, json.dumps(doc, indent=2, ensure_ascii=False))
+    for rel, doc in sentinelforge.geometries().items():
+        _tulis(rp, rel, json.dumps(doc, indent=2, ensure_ascii=False))
+    for rel, (w, h, rows) in sentinelforge.tekstur().items():
+        target = os.path.join(rp, rel)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        write_png(target, w, h, rows)
+    _tulis(rp, "textures/item_texture.json",
+           json.dumps(sentinelforge.item_texture(), indent=2, ensure_ascii=False))
+    for rel, isi_lang in sentinelforge.bahasa().items():
+        _tulis(rp, rel, isi_lang)
+    _tulis(rp, "texts/languages.json", json.dumps(["en_US", "id_ID"], indent=2))
+
+    # ---- 2. Behavior pack: entity, telur spawn, resep, skrip pembersih ------ #
+    bp = os.path.join(staging, SENTINEL_BP)
+    for sub in ("entities", "items", "recipes", "scripts"):
+        os.makedirs(os.path.join(bp, sub), exist_ok=True)
+    write_png(os.path.join(bp, "pack_icon.png"), 128, 128,
+              blackhole.pack_icon(128, "inti")[2])
+    _tulis(bp, "manifest.json", json.dumps(
+        manifest(SENTINEL_BP_NAME,
+                 f"Sentinel Void: {stat['nyawa']} HP (jinak {stat['nyawa_jinak']}), "
+                 f"damage {stat['serangan']}, melayang, kebal api & knockback. "
+                 "Memburu keluarga monster/undead/arthropod/illager (+keluarga "
+                 "add-on), membalas siapa pun yang melukai pemiliknya, tidak "
+                 "pernah menyerang player/hewan/villager. Skrip crvx:scan & "
+                 "crvx:basmi memakai Entity.remove() - melewati jalur kematian "
+                 "sehingga mob kebal /kill tetap bisa dihapus.",
+                 version, "data", MIN_ENGINE_SCRIPT,
+                 script_entry="scripts/sentinel.js",
+                 dependencies=[{"module_name": "@minecraft/server",
+                                "version": SERVER_API},
+                               {"uuid": _uuid(SENTINEL_RP_NAME, "header"),
+                                "version": version}]),
+        indent=2, ensure_ascii=False))
+    for rel, doc in sentinelforge.entities().items():
+        _tulis(bp, rel, json.dumps(doc, indent=2, ensure_ascii=False))
+    for rel, doc in sentinelforge.items().items():
+        _tulis(bp, rel, json.dumps(doc, indent=2, ensure_ascii=False))
+    for rel, doc in sentinelforge.recipes().items():
+        _tulis(bp, rel, json.dumps(doc, indent=2, ensure_ascii=False))
+    _tulis(bp, "scripts/sentinel.js", sentinelforge.skrip())
+
+    # ---- 3. Zip ------------------------------------------------------------- #
+    with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for pack in (rp, bp):
+            base = os.path.basename(pack)
+            for root, _dirs, files in os.walk(pack):
+                for fname in sorted(files):
+                    full = os.path.join(root, fname)
+                    rel = os.path.relpath(full, pack).replace(os.sep, "/")
+                    zf.write(full, f"{base}/{rel}")
+    shutil.rmtree(staging, ignore_errors=True)
+    return out_path
+
+
+def _png_size(data: bytes) -> Tuple[int, int]:
+    w, h = struct.unpack(">II", data[16:24])
+    return int(w), int(h)
+
+
+def verify_sentinel(path: str) -> Dict[str, object]:
+    """Validasi .mcaddon Sentinel: entity, client entity, geometry, telur, skrip."""
+    problems: List[str] = []
+    result: Dict[str, object] = {
+        "ok": False, "problems": problems, "size_bytes": 0, "entries": [],
+        "packs": [], "entity": "", "components": [], "behaviors": [],
+        "buruan": [], "cubes": 0, "bones": [], "items": [], "commands": [],
+    }
+    if not os.path.exists(path):
+        problems.append(f"file tidak ada: {path}")
+        return result
+    result["size_bytes"] = os.path.getsize(path)
+    try:
+        with zipfile.ZipFile(path) as zf:
+            names = zf.namelist()
+            result["entries"] = names
+
+            def baca(n: str) -> object:
+                return json.loads(zf.read(n).decode("utf-8"))
+
+            # ---- 0. manifest ------------------------------------------------ #
+            uuids = set()
+            for folder in (SENTINEL_RP, SENTINEL_BP):
+                man = f"{folder}/manifest.json"
+                if man not in names:
+                    problems.append(f"{man} tidak ada")
+                    continue
+                data = baca(man)
+                assert isinstance(data, dict)
+                uuids.add(data["header"]["uuid"])
+                modules = data.get("modules", [])
+                result["packs"].append({"folder": folder,
+                                        "name": data["header"].get("name"),
+                                        "types": [m.get("type") for m in modules]})
+                if folder == SENTINEL_BP:
+                    if not any(m.get("type") == "script" and
+                               m.get("entry") == "scripts/sentinel.js"
+                               for m in modules):
+                        problems.append("BP tidak punya modul script "
+                                        "scripts/sentinel.js")
+                    deps = data.get("dependencies", [])
+                    if not any(d.get("module_name") == "@minecraft/server" and
+                               d.get("version") == SERVER_API for d in deps):
+                        problems.append(f"BP harus bergantung @minecraft/server "
+                                        f"{SERVER_API}")
+                    if not any(d.get("uuid") for d in deps):
+                        problems.append("BP harus bergantung pada RP-nya "
+                                        "(client entity tidak akan ketemu)")
+            if len(uuids) < 2:
+                problems.append("uuid pack tidak unik")
+
+            # ---- 1. entity behavior pack ------------------------------------ #
+            ent_files = [n for n in names if "/entities/" in n and n.endswith(".json")]
+            if not ent_files:
+                problems.append("BP/entities/*.json tidak ada")
+            else:
+                doc = baca(ent_files[0])
+                assert isinstance(doc, dict)
+                ent = doc["minecraft:entity"]
+                desc = ent["description"]
+                ident = desc.get("identifier", "")
+                result["entity"] = ident
+                if ident != sentinelforge.ENTITAS:
+                    problems.append(f"identifier entity {ident} != "
+                                    f"{sentinelforge.ENTITAS}")
+                if not desc.get("is_summonable") or not desc.get("is_spawnable"):
+                    problems.append("description harus is_summonable & is_spawnable "
+                                    "true (/summon tidak akan jalan)")
+                comps = ent.get("components", {})
+                for kunci in comps:
+                    if kunci not in SENTINEL_KOMPONEN:
+                        problems.append(f"komponen tak terverifikasi: {kunci}")
+                for haram in SENTINEL_HARAM:
+                    if haram in comps:
+                        problems.append(f"{haram} TIDAK ADA di bentuk resmi - hapus")
+                result["components"] = sorted(comps)
+                result["behaviors"] = sorted(k for k in comps if ":behavior." in k)
+                wajib = ("minecraft:health", "minecraft:attack", "minecraft:physics",
+                         "minecraft:movement.fly", "minecraft:navigation.fly",
+                         "minecraft:can_fly", "minecraft:type_family",
+                         "minecraft:tameable", "minecraft:persistent",
+                         "minecraft:behavior.hurt_by_target",
+                         "minecraft:behavior.owner_hurt_by_target",
+                         "minecraft:behavior.owner_hurt_target",
+                         "minecraft:behavior.nearest_attackable_target",
+                         "minecraft:behavior.melee_attack")
+                for w in wajib:
+                    if w not in comps:
+                        problems.append(f"komponen wajib hilang: {w}")
+                if comps.get("minecraft:physics", {}).get("has_gravity") is not False:
+                    problems.append("physics.has_gravity harus false (melayang)")
+                if comps.get("minecraft:physics", {}).get("has_collision") is not True:
+                    problems.append("physics.has_collision harus true (bisa dipukul)")
+                fam = comps.get("minecraft:type_family", {}).get("family", [])
+                if "sentinel" not in fam:
+                    problems.append("type_family harus memuat 'sentinel'")
+                # 'sentinel'/'crvx' justru identitas penjaga sendiri; yang
+                # dilarang adalah keluarga ramah yang lain.
+                for aman in set(sentinelforge.KELUARGA_AMAN) - {"sentinel", "crvx"}:
+                    if aman in fam:
+                        problems.append(f"type_family memuat '{aman}' - penjaga bisa "
+                                        f"jadi target mob lain secara salah")
+                if comps.get("minecraft:health", {}).get("value", 0) < 100:
+                    problems.append("health terlalu rendah untuk melawan bos add-on")
+                if comps.get("minecraft:attack", {}).get("damage", 0) < 8:
+                    problems.append("attack terlalu rendah")
+                tam = comps.get("minecraft:tameable", {})
+                if not isinstance(tam.get("tame_items"), list) or not tam["tame_items"]:
+                    problems.append("tameable.tame_items harus list berisi item")
+                if tam.get("probability", 0) != 1.0:
+                    problems.append("probability harus 1.0 (penjinakan pasti)")
+                ev = tam.get("tame_event")
+                if not isinstance(ev, dict) or ev.get("target") != "self":
+                    problems.append("tame_event harus {event, target: self}")
+                groups = ent.get("component_groups", {})
+                nama_group = ev.get("event") if isinstance(ev, dict) else ""
+                event_def = ent.get("events", {}).get(nama_group, {})
+                tambah = event_def.get("add", {}).get("component_groups", []) \
+                    if isinstance(event_def, dict) else []
+                for g in tambah:
+                    if g not in groups:
+                        problems.append(f"event {nama_group} menambah group tak ada: {g}")
+                jinak = [g for g in groups.values() if "minecraft:is_tamed" in g]
+                if not jinak:
+                    problems.append("tidak ada component group dengan "
+                                    "minecraft:is_tamed - owner_hurt_* tidak aktif")
+                ntt = comps.get("minecraft:behavior.nearest_attackable_target", {})
+                et = ntt.get("entity_types", [])
+                result["buruan"] = [x.get("filters", {}).get("value") for x in et]
+                if not et:
+                    problems.append("nearest_attackable_target tanpa entity_types")
+                for x in et:
+                    f = x.get("filters", {})
+                    if f.get("test") != "is_family" or f.get("subject") != "other":
+                        problems.append(f"filter tidak resmi: {f}")
+                    if f.get("value") in sentinelforge.KELUARGA_AMAN:
+                        problems.append(f"penjaga memburu keluarga aman "
+                                        f"{f.get('value')} - tidak lagi 'baik'")
+                    if not isinstance(x.get("max_dist"), int) or x["max_dist"] < 8:
+                        problems.append(f"max_dist harus int >= 8 ({x.get('max_dist')})")
+                if not any(v in result["buruan"] for v in
+                           ("monster", "undead", "arthropod", "illager")):
+                    problems.append("tidak ada keluarga vanilla yang diburu")
+
+            # ---- 2. client entity (RP) -------------------------------------- #
+            ce = [n for n in names if "/entity/" in n and n.endswith(".entity.json")]
+            if not ce:
+                problems.append("RP entity/*.entity.json tidak ada (mob tak terlihat)")
+            else:
+                doc = baca(ce[0])
+                assert isinstance(doc, dict)
+                d = doc["minecraft:client_entity"]["description"]
+                if d.get("identifier") != result["entity"]:
+                    problems.append("client entity identifier != entity BP")
+                geo_key = d.get("geometry", {}).get("default", "")
+                tex_key = d.get("textures", {}).get("default", "")
+                if not d.get("materials", {}).get("default"):
+                    problems.append("materials.default kosong")
+                if "controller.render.default" not in d.get("render_controllers", []):
+                    problems.append("render_controllers harus controller.render.default")
+                egg = d.get("spawn_egg", {}).get("texture")
+                if not egg:
+                    problems.append("spawn_egg.texture kosong - telur tak punya ikon")
+
+                geo_files = [n for n in names if n.endswith(".geo.json")]
+                if not geo_files:
+                    problems.append("geometry tidak ada di RP")
+                else:
+                    g = baca(geo_files[0])
+                    assert isinstance(g, dict)
+                    blok = g["minecraft:geometry"][0]
+                    gd = blok["description"]
+                    if gd.get("identifier") != geo_key:
+                        problems.append(f"geometry identifier {gd.get('identifier')} "
+                                        f"!= {geo_key} di client entity")
+                    tw, th = gd.get("texture_width"), gd.get("texture_height")
+                    bones = blok.get("bones", [])
+                    result["bones"] = [b.get("name") for b in bones]
+                    akar = [b for b in bones if not b.get("parent")]
+                    if len(akar) != 1:
+                        problems.append(f"harus tepat 1 bone akar (dapat {len(akar)})")
+                    for b in bones:
+                        par = b.get("parent")
+                        if par and par not in result["bones"]:
+                            problems.append(f"bone {b.get('name')} parent tak dikenal")
+                        if "pivot" not in b:
+                            problems.append(f"bone {b.get('name')} tanpa pivot")
+                    uv = []
+                    for b in bones:
+                        for c in b.get("cubes", []):
+                            if any(not isinstance(x, int) or x <= 0
+                                   for x in c["size"]):
+                                problems.append(f"ukuran kubus harus int > 0 {c['size']}")
+                            uv.append(_kotak_uv(c))
+                    result["cubes"] = len(uv)
+                    if len(uv) < 8:
+                        problems.append(f"model terlalu sederhana ({len(uv)} kubus)")
+                    for u, v, bw, bh in uv:
+                        if u < 0 or v < 0 or u + bw > tw or v + bh > th:
+                            problems.append(f"uv {(u, v)} kotak {(bw, bh)} keluar "
+                                            f"tekstur {tw}x{th}")
+                    for i, a in enumerate(uv):
+                        for bb in uv[i + 1:]:
+                            if (a[0] < bb[0] + bb[2] and bb[0] < a[0] + a[2] and
+                                    a[1] < bb[1] + bb[3] and bb[1] < a[1] + a[3]):
+                                problems.append(f"kotak UV tumpang tindih {a} vs {bb}")
+                    if f"{SENTINEL_RP}/{tex_key}.png" not in names:
+                        problems.append(f"tekstur entity {tex_key}.png tidak ada")
+                    else:
+                        data = zf.read(f"{SENTINEL_RP}/{tex_key}.png")
+                        w, h = _png_size(data)
+                        if (w, h) != (tw, th):
+                            problems.append(f"tekstur {w}x{h} != texture_width/height "
+                                            f"{tw}x{th}")
+                        _w2, _h2, rows = read_png(data)
+                        if not any(px[3] > 0 for row in rows for px in
+                                   (row[i:i + 4] for i in range(0, len(row), 4))):
+                            problems.append("tekstur entity transparan semua")
+
+            # ---- 3. item telur + ikon + resep -------------------------------- #
+            itex = f"{SENTINEL_RP}/textures/item_texture.json"
+            ikon_keys = set()
+            if itex not in names:
+                problems.append("RP textures/item_texture.json tidak ada")
+            else:
+                t = baca(itex)
+                assert isinstance(t, dict)
+                if t.get("texture_name") != "atlas.items":
+                    problems.append("item_texture.json texture_name harus atlas.items")
+                for kunci, val in t.get("texture_data", {}).items():
+                    ikon_keys.add(kunci)
+                    png = val["textures"] + ".png"
+                    if f"{SENTINEL_RP}/{png}" not in names:
+                        problems.append(f"ikon {kunci} -> {png} tidak ada")
+            for n in [x for x in names if "/items/" in x and x.endswith(".json")]:
+                doc = baca(n)
+                assert isinstance(doc, dict)
+                item = doc["minecraft:item"]
+                ident = item["description"]["identifier"]
+                result["items"].append(ident)
+                comps = item.get("components", {})
+                fv = [int(x) for x in str(doc.get("format_version")).split(".")]
+                if fv < [1, 20, 10]:
+                    problems.append("minecraft:entity_placer butuh format_version "
+                                    ">= 1.20.10")
+                placer = comps.get("minecraft:entity_placer", {})
+                if placer.get("entity") != result["entity"]:
+                    problems.append("entity_placer.entity harus menunjuk entity BP")
+                if item["description"].get("menu_category", {}).get("category") \
+                        not in ("construction", "equipment", "items", "nature",
+                                "none"):
+                    problems.append("menu_category.category tidak resmi")
+                ikon = comps.get("minecraft:icon", {}).get("texture")
+                if ikon not in ikon_keys:
+                    problems.append(f"ikon item {ikon} tak terdaftar di "
+                                    f"item_texture.json")
+                if not comps.get("minecraft:display_name", {}).get("value"):
+                    problems.append("display_name kosong")
+                if ce:
+                    egg = baca(ce[0])["minecraft:client_entity"]["description"] \
+                        .get("spawn_egg", {}).get("texture")
+                    if egg not in ikon_keys:
+                        problems.append(f"spawn_egg.texture {egg} tak terdaftar")
+                    png = f"{SENTINEL_RP}/textures/items/{egg}.png"
+                    if png in names and _png_size(zf.read(png)) != (16, 16):
+                        problems.append("ikon telur harus 16x16")
+            for n in [x for x in names if "/recipes/" in x and x.endswith(".json")]:
+                doc = baca(n)
+                assert isinstance(doc, dict)
+                r = doc["minecraft:recipe_shaped"]
+                pola = r["pattern"]
+                if len(pola) > 3 or any(len(bar) > 3 for bar in pola):
+                    problems.append(f"pola resep melebihi 3x3: {pola}")
+                kunci = set(r.get("key", {}))
+                dipakai = {ch for bar in pola for ch in bar if ch != " "}
+                if dipakai - kunci:
+                    problems.append(f"simbol pola tanpa key: {sorted(pakai - kunci)}")
+                for k, v in r["key"].items():
+                    if not str(v.get("item", "")).startswith("minecraft:"):
+                        problems.append(f"material resep bukan vanilla: {v}")
+                hasil = r["result"]["item"]
+                if hasil not in result["items"]:
+                    problems.append(f"hasil resep {hasil} bukan item di pack ini")
+                if "crafting_table" not in r.get("tags", []):
+                    problems.append("resep harus tags: crafting_table")
+
+            # ---- 4. skrip pembersih ------------------------------------------ #
+            js_path = f"{SENTINEL_BP}/scripts/sentinel.js"
+            if js_path not in names:
+                problems.append(f"{js_path} tidak ada")
+            else:
+                js = zf.read(js_path).decode("utf-8")
+                for token in ("scriptEventReceive", "crvx:scan", "crvx:basmi",
+                              "getEntities", "maxDistance", ".remove()",
+                              "world.sendMessage", "@minecraft/server"):
+                    if token not in js:
+                        problems.append(f"skrip kehilangan '{token}'")
+                for haram in SKRIP_TERLARANG:
+                    if haram in js:
+                        problems.append(f"skrip memakai '{haram}' yang tidak ada di "
+                                        f"@minecraft/server {SERVER_API} / merusak")
+                if "catch" not in js or js.count("aman(") < 8:
+                    problems.append("setiap panggilan API harus lewat pembungkus "
+                                    "aman() + catch (skrip mati = perintah mati)")
+                result["commands"] = [c for c in ("/scriptevent crvx:scan",
+                                                  "/scriptevent crvx:basmi",
+                                                  "/scriptevent crvx:bantuan")
+                                      if c.split()[-1] in js]
+    except (zipfile.BadZipFile, OSError, KeyError, ValueError, AssertionError,
+            TypeError) as exc:
         problems.append(f"gagal memeriksa: {exc}")
     result["ok"] = not problems
     return result

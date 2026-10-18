@@ -1110,3 +1110,315 @@ class TestGearForge(unittest.TestCase):
         self.assertGreater(stat["durability_rata"], stat["durability_netherite_rata"])
         self.assertGreater(stat["damage_pedang"], stat["damage_netherite"])
         self.assertGreater(stat["enchantability"], stat["enchantability_netherite"])
+
+
+class TestSentinelForge(unittest.TestCase):
+    """Sentinel Void: penjaga melayang pemburu mob add-on.
+
+    Batas sahih: 495 bentuk ``content/forms/entity`` resmi (29 komponen dipakai,
+    4 dipastikan tidak ada), entity vanilla wither/iron_golem/parrot/bee/vex/wolf
+    untuk bentuk isi, ``blaze.entity.json`` untuk client entity, dan d.ts
+    ``@minecraft/server`` 2.0.0 untuk ``Entity.remove()``.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from crvx import sentinelforge
+        from crvx import addonforge
+        cls.s = sentinelforge
+        cls.af = addonforge
+        cls.ent = sentinelforge.entity_bp()["minecraft:entity"]
+        cls.comp = cls.ent["components"]
+        cls.ce = sentinelforge.client_entity()["minecraft:client_entity"]["description"]
+        cls.geo, cls.rows = sentinelforge.geo_sentinel()
+        cls.js = sentinelforge.skrip()
+
+    # ---------------- behavior pack: komponen ---------------- #
+    def test_hanya_komponen_yang_terbukti_ada(self):
+        luar = set(self.comp) - self.af.SENTINEL_KOMPONEN
+        self.assertEqual(luar, set(),
+                         f"komponen tak ada di bentuk resmi: {sorted(luar)}")
+        for haram in self.af.SENTINEL_HARAM:
+            self.assertNotIn(haram, self.comp,
+                             f"{haram} dipastikan TIDAK ADA di 495 bentuk resmi")
+        self.assertGreaterEqual(len(self.comp), 20)
+
+    def test_melayang_tanpa_komponen_gravity(self):
+        fis = self.comp["minecraft:physics"]
+        self.assertIs(fis["has_gravity"], False)
+        self.assertIs(fis["has_collision"], True,
+                      "tanpa collision, sentinel tidak bisa memukul/dipukul")
+        self.assertEqual(self.comp["minecraft:movement.fly"], {})
+        self.assertEqual(self.comp["minecraft:can_fly"], {})
+        nav = self.comp["minecraft:navigation.fly"]
+        # hanya field yang dipakai parrot.json vanilla
+        self.assertTrue(set(nav) <= {"can_path_from_air", "can_path_over_water"})
+        self.assertTrue(nav["can_path_from_air"],
+                        "pathfinding dari udara: wajib untuk mob terbang")
+
+    def test_bentuk_isi_meniru_entity_vanilla(self):
+        self.assertEqual(self.comp["minecraft:fire_immune"], {},
+                         "wither.json memakai objek kosong, bukan true")
+        self.assertEqual(self.comp["minecraft:knockback_resistance"], {"value": 1.0})
+        self.assertEqual(self.comp["minecraft:persistent"], {})
+        hp = self.comp["minecraft:health"]
+        self.assertEqual(hp["value"], hp["max"])
+        self.assertIn("damage", self.comp["minecraft:attack"])
+        kotak = self.comp["minecraft:collision_box"]
+        self.assertEqual(set(kotak), {"height", "width"})
+        tam = self.comp["minecraft:tameable"]
+        self.assertEqual(tam["probability"], 1.0)
+        self.assertIsInstance(tam["tame_items"], list,
+                              "parrot.json memakai list untuk tame_items")
+        self.assertEqual(tam["tame_event"]["target"], "self")
+
+    def test_tidak_menyerang_yang_baik(self):
+        for entri in self.comp[
+                "minecraft:behavior.nearest_attackable_target"]["entity_types"]:
+            f = entri["filters"]
+            self.assertEqual(f["test"], "is_family")
+            self.assertEqual(f["subject"], "other")
+            self.assertNotIn(f["value"], self.s.KELUARGA_AMAN,
+                             f"penjaga memburu {f['value']} - harus tetap baik")
+            self.assertIsInstance(entri["max_dist"], int)
+        keluarga = self.comp["minecraft:type_family"]["family"]
+        self.assertIn("sentinel", keluarga)
+        for ramah in ("player", "animal", "villager"):
+            self.assertNotIn(ramah, keluarga)
+
+    def test_memburu_keluarga_vanilla_dan_addon(self):
+        nilai = [e["filters"]["value"] for e in self.comp[
+            "minecraft:behavior.nearest_attackable_target"]["entity_types"]]
+        for wajib in ("monster", "undead", "arthropod", "illager"):
+            self.assertIn(wajib, nilai)
+        # tebakan keluarga add-on "Locust"-an: filter tak cocok tidak berbahaya
+        self.assertTrue({"locust", "swarm", "insect", "hive"} & set(nilai))
+
+    def test_melindungi_pemilik_lewat_family_agnostic(self):
+        for b in ("minecraft:behavior.hurt_by_target",
+                  "minecraft:behavior.owner_hurt_by_target",
+                  "minecraft:behavior.owner_hurt_target",
+                  "minecraft:behavior.melee_attack",
+                  "minecraft:behavior.follow_owner",
+                  "minecraft:behavior.move_towards_target"):
+            self.assertIn(b, self.comp, f"{b} hilang - penjaga tidak melindungi")
+        # owner_hurt_by_target TIDAK memfilter keluarga: apa pun yang melukai
+        # pemilik (termasuk Locust ber-family aneh) langsung jadi target.
+        self.assertEqual(self.comp["minecraft:behavior.owner_hurt_by_target"],
+                         {"priority": 0})
+        event = self.comp["minecraft:tameable"]["tame_event"]["event"]
+        groups = self.ent["events"][event]["add"]["component_groups"]
+        self.assertTrue(groups)
+        for g in groups:
+            self.assertIn(g, self.ent["component_groups"])
+            self.assertIn("minecraft:is_tamed", self.ent["component_groups"][g])
+            self.assertGreater(
+                self.ent["component_groups"][g]["minecraft:health"]["value"],
+                self.comp["minecraft:health"]["value"])
+
+    # ---------------- resource pack: model & client entity ---------------- #
+    def test_geometry_valid_dan_tidak_bocor(self):
+        blok = self.geo["minecraft:geometry"][0]
+        tw, th = (blok["description"]["texture_width"],
+                  blok["description"]["texture_height"])
+        self.assertEqual((tw, th), (64, 64))
+        bones = blok["bones"]
+        nama = [b["name"] for b in bones]
+        self.assertEqual(len(set(nama)), len(nama))
+        self.assertEqual(len([b for b in bones if not b.get("parent")]), 1,
+                         "melayang = satu akar; tanpa rantai kaki")
+        for b in bones:
+            if b.get("parent"):
+                self.assertIn(b["parent"], nama)
+            self.assertIn("pivot", b)
+        kotak = []
+        for b in bones:
+            for c in b.get("cubes", []):
+                self.assertEqual([int(x) for x in c["size"]], list(c["size"]))
+                w, h, d = c["size"]
+                u, v = c["uv"]
+                kotak.append((u, v, 2 * (w + d), h + d))
+        self.assertGreaterEqual(len(kotak), 12,
+                                "inti + mata + jantung + halo + mahkota + 2 bilah")
+        for u, v, bw, bh in kotak:
+            self.assertGreaterEqual(u, 0)
+            self.assertLessEqual(u + bw, tw)
+            self.assertLessEqual(v + bh, th)
+        for i, a in enumerate(kotak):
+            for bb in kotak[i + 1:]:
+                tumpang = (a[0] < bb[0] + bb[2] and bb[0] < a[0] + a[2] and
+                           a[1] < bb[1] + bb[3] and bb[1] < a[1] + a[3])
+                self.assertFalse(tumpang, f"UV bocor {a} vs {bb}")
+
+    def test_client_entity_meniru_blaze(self):
+        doc = self.s.client_entity()
+        fv = [int(x) for x in str(doc["format_version"]).split(".")]
+        self.assertGreaterEqual(fv, [1, 8, 0])
+        self.assertEqual(self.ce["identifier"], self.s.ENTITAS)
+        self.assertEqual(self.ce["min_engine_version"], doc["format_version"])
+        self.assertEqual(self.ce["materials"]["default"], "entity_alphatest")
+        self.assertEqual(self.ce["render_controllers"],
+                         ["controller.render.default"],
+                         "hanya render controller bawaan - tanpa aset tambahan")
+        self.assertEqual(self.ce["geometry"]["default"], self.s.GEO_ID)
+        self.assertEqual(self.ce["textures"]["default"], self.s.TEKS_ENTITAS)
+        self.assertEqual(self.ce["spawn_egg"]["texture"], self.s.IKON_TELUR)
+        self.assertEqual(self.geo["minecraft:geometry"][0]["description"]
+                         ["identifier"], self.s.GEO_ID)
+
+    def test_tekstur_ukuran_benar(self):
+        peta = self.s.tekstur()
+        self.assertIn(f"{self.s.TEKS_ENTITAS}.png", peta)
+        self.assertEqual(peta[f"{self.s.TEKS_ENTITAS}.png"][:2], (64, 64))
+        self.assertEqual(len(self.rows), 64)
+        self.assertTrue(all(len(r) == 64 * 4 for r in self.rows))
+        alpha = {r[x * 4 + 3] for r in self.rows for x in range(64)}
+        self.assertIn(255, alpha, "tekstur entity harus punya piksel opak")
+        w, h, egg = self.s.ikon_telur(16)
+        self.assertEqual((w, h), (16, 16))
+        a2 = {r[x * 4 + 3] for r in egg for x in range(16)}
+        self.assertIn(0, a2, "ikon telur butuh latar transparan")
+        self.assertIn(255, a2)
+        cyan = any(r[x * 4:x * 4 + 3] == bytes(self.s.VOID_AKSEN)
+                   for r in egg for x in range(16))
+        self.assertTrue(cyan, "ikon telur harus membawa aksen cyan CRVX")
+
+    # ---------------- item telur, resep, bahasa ---------------- #
+    def test_telur_pakai_entity_placer_resmi(self):
+        item = self.s.item_telur()["minecraft:item"]
+        self.assertEqual(item["description"]["identifier"], self.s.TELUR)
+        self.assertEqual(item["description"]["menu_category"]["category"], "nature")
+        fv = [int(x) for x in str(
+            self.s.item_telur()["format_version"]).split(".")]
+        self.assertGreaterEqual(fv, [1, 20, 10],
+                                "entity_placer butuh format_version >= 1.20.10")
+        comp = item["components"]
+        self.assertEqual(comp["minecraft:entity_placer"]["entity"], self.s.ENTITAS)
+        self.assertEqual(comp["minecraft:icon"]["texture"], self.s.IKON_TELUR)
+        self.assertEqual(comp["minecraft:max_stack_size"], 16)
+        self.assertIn(self.s.NAMA_TELUR, comp["minecraft:display_name"]["value"])
+        # ikon terdaftar di item_texture.json + berkasnya benar-benar dibuat
+        tex = self.s.item_texture()
+        self.assertEqual(tex["texture_name"], "atlas.items")
+        self.assertIn(self.s.IKON_TELUR, tex["texture_data"])
+        rel = tex["texture_data"][self.s.IKON_TELUR]["textures"] + ".png"
+        self.assertIn(rel, self.s.tekstur())
+
+    def test_resep_survival_tanpa_cheats(self):
+        r = self.s.resep_telur()["minecraft:recipe_shaped"]
+        self.assertEqual(r["tags"], ["crafting_table"])
+        self.assertLessEqual(len(r["pattern"]), 3)
+        for bar in r["pattern"]:
+            self.assertLessEqual(len(bar), 3)
+        simbol = {c for bar in r["pattern"] for c in bar if c != " "}
+        self.assertEqual(simbol, set(r["key"]), "simbol pola harus punya key")
+        for k, v in r["key"].items():
+            self.assertTrue(v["item"].startswith("minecraft:"),
+                            f"material bukan vanilla: {v}")
+        self.assertEqual(r["result"]["item"], self.s.TELUR)
+        self.assertEqual(r["unlock"], [{"item": "minecraft:echo_shard"}])
+
+    def test_bahasa_indonesia_dan_kunci_lang_resmi(self):
+        peta = self.s.bahasa()
+        id_id = peta["texts/id_ID.lang"]
+        self.assertIn(f"entity.{self.s.ENTITAS}.name={self.s.NAMA_ENTITAS}", id_id)
+        self.assertIn(f"item.{self.s.TELUR}={self.s.NAMA_TELUR}", id_id)
+        self.assertIn("pack.name=", id_id)
+        self.assertIn("pack.name=", peta["texts/en_US.lang"])
+
+    # ---------------- skrip pembersih ---------------- #
+    def test_skrip_pakai_remove_bukan_kill(self):
+        self.assertIn(".remove()", self.js,
+                      "Entity.remove() = satu-satunya jalan melewati kebal-mati")
+        self.assertIn('from "@minecraft/server"', self.js)
+        for terlarang in ("Entity.kill(", ".isPlayer(", "chatSend", "kill @e",
+                          "@minecraft/server-ui", "beforeEvents"):
+            self.assertNotIn(terlarang, self.js,
+                             f"{terlarang} tidak ada di @minecraft/server 2.0.0")
+        for wajib in ("scriptEventReceive", "crvx:scan", "crvx:basmi",
+                      "crvx:bantuan", "getEntities", "maxDistance",
+                      "world.sendMessage", "system.runTimeout"):
+            self.assertIn(wajib, self.js)
+        self.assertIn("catch", self.js)
+        self.assertGreaterEqual(self.js.count("aman("), 8,
+                                "semua panggilan API harus lewat pembungkus aman()")
+        # tidak boleh menyentuh entity vanilla maupun sentinel sendiri
+        self.assertIn("typeId.indexOf(AKU[i]) === 0", self.js)
+        self.assertIn('"crvx:"', self.js)
+
+    def test_skrip_menyaring_hanya_entity_addon(self):
+        self.assertIn("function asing(", self.js)
+        baris = [b for b in self.js.splitlines() if "AKU[i]" in b]
+        self.assertTrue(baris, "daftar aman harus dipakai saat menyaring")
+        self.assertIn("AKU = [\"minecraft:\", \"crvx:\"]", self.js)
+        self.assertIn("BATAS = 64", self.js, "radius dibatasi agar tidak nyapu dunia")
+
+    # ---------------- build, verify, statistik ---------------- #
+    def test_build_dan_verify_sentinel(self):
+        from crvx.addonforge import build_sentinel, verify_sentinel
+        with tempfile.TemporaryDirectory() as tmp:
+            path = build_sentinel(os.path.join(tmp, "sentinel.mcaddon"))
+            hasil = verify_sentinel(path)
+            self.assertTrue(hasil["ok"], hasil["problems"])
+            self.assertEqual(hasil["entity"], self.s.ENTITAS)
+            self.assertEqual(hasil["items"], [self.s.TELUR])
+            self.assertGreaterEqual(hasil["cubes"], 12)
+            self.assertEqual(len(hasil["packs"]), 2)
+            self.assertIn("script", hasil["packs"][1]["types"])
+            self.assertIn(f"{self.af.SENTINEL_BP}/scripts/sentinel.js",
+                          hasil["entries"])
+            self.assertIn(f"{self.af.SENTINEL_RP}/entity/crvx_sentinel.entity.json",
+                          hasil["entries"])
+            # verifier harus MENOLAK komponen bikinan (minecraft:gravity)
+            import zipfile as _zip
+            rusak = os.path.join(tmp, "rusak.mcaddon")
+            with _zip.ZipFile(path) as zin, _zip.ZipFile(rusak, "w") as zout:
+                for item in zin.infolist():
+                    data = zin.read(item.filename)
+                    if item.filename.endswith("entities/crvx_sentinel.json"):
+                        data = data.replace(b'"minecraft:can_fly": {}',
+                                            b'"minecraft:can_fly": {},\n    '
+                                            b'"minecraft:gravity": {}')
+                    zout.writestr(item, data)
+            buruk = verify_sentinel(rusak)
+            self.assertFalse(buruk["ok"])
+            self.assertTrue(any("gravity" in p for p in buruk["problems"]),
+                            buruk["problems"])
+
+    def test_verifier_menolak_penjaga_yang_jadi_ganas(self):
+        from crvx.addonforge import verify_sentinel, SENTINEL_RP, SENTINEL_BP
+        import json as _json
+        import zipfile as _zip
+        from crvx.addonforge import build_sentinel
+        with tempfile.TemporaryDirectory() as tmp:
+            path = build_sentinel(os.path.join(tmp, "s.mcaddon"))
+            rusak = os.path.join(tmp, "ganas.mcaddon")
+            with _zip.ZipFile(path) as zin, _zip.ZipFile(rusak, "w") as zout:
+                for item in zin.infolist():
+                    data = zin.read(item.filename)
+                    if item.filename.endswith("entities/crvx_sentinel.json"):
+                        doc = _json.loads(data.decode("utf-8"))
+                        comp = doc["minecraft:entity"]["components"]
+                        comp["minecraft:behavior.nearest_attackable_target"][
+                            "entity_types"].append(
+                            {"filters": {"test": "is_family", "subject": "other",
+                                         "value": "player"}, "max_dist": 32})
+                        data = _json.dumps(doc).encode("utf-8")
+                    zout.writestr(item, data)
+            buruk = verify_sentinel(rusak)
+            self.assertFalse(buruk["ok"], "penjaga yang memburu player harus ditolak")
+            self.assertTrue(any("keluarga aman" in p for p in buruk["problems"]),
+                            buruk["problems"])
+            self.assertTrue(SENTINEL_RP and SENTINEL_BP)
+
+    def test_statistik_setara_melawan_bos(self):
+        stat = self.s.statistik()
+        pem = stat["pembanding"]
+        self.assertGreater(stat["nyawa"], pem["iron_golem"]["nyawa"])
+        self.assertGreater(stat["serangan"], pem["iron_golem"]["serangan"])
+        self.assertLess(stat["nyawa"], pem["warden"]["nyawa"],
+                        "tidak boleh sekuat warden: tetap bisa dikalahkan")
+        self.assertTrue(stat["melayang"] and stat["kebal_api"])
+        self.assertEqual(stat["kebal_knockback"], 1.0)
+        self.assertIn("/scriptevent crvx:basmi 24", stat["perintah"])
+        self.assertEqual(stat["penjinak"], "minecraft:echo_shard")
