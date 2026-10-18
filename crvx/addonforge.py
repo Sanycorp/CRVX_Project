@@ -915,7 +915,7 @@ SENTINEL_KOMPONEN = {
     "minecraft:behavior.nearest_attackable_target",
     "minecraft:behavior.melee_attack", "minecraft:behavior.move_towards_target",
     "minecraft:behavior.follow_owner", "minecraft:behavior.look_at_player",
-    "minecraft:behavior.random_look_around",
+    "minecraft:behavior.random_look_around", "minecraft:damage_sensor",
 }
 # Terbukti TIDAK ADA di bentuk resmi -> dilarang dipakai.
 SENTINEL_HARAM = ("minecraft:gravity", "minecraft:is_summonable",
@@ -925,7 +925,7 @@ SKRIP_TERLARANG = ("Entity.kill(", ".isPlayer(", "chatSend", "kill @e",
                    "@minecraft/server-ui")
 
 
-def build_sentinel(out_path: str, version: Sequence[int] = (1, 0, 0)) -> str:
+def build_sentinel(out_path: str, version: Sequence[int] = (3, 0, 0)) -> str:
     """Bangun ``.mcaddon`` CRVX Sentinel (RP model + BP entity/item/skrip)."""
     version = list(version)
     out_path = os.path.abspath(out_path)
@@ -940,10 +940,11 @@ def build_sentinel(out_path: str, version: Sequence[int] = (1, 0, 0)) -> str:
     rp = os.path.join(staging, SENTINEL_RP)
     for sub in ("entity", os.path.join("models", "entity"),
                 os.path.join("textures", "entity"),
-                os.path.join("textures", "items"), "texts"):
+                os.path.join("textures", "items"), "texts", "animations",
+                "animation_controllers"):
         os.makedirs(os.path.join(rp, sub), exist_ok=True)
-    write_png(os.path.join(rp, "pack_icon.png"), 128, 128,
-              blackhole.pack_icon(128, "ganas")[2])
+    write_png(os.path.join(rp, "pack_icon.png"), 256, 256,
+              blackhole.pack_icon(256, "ganas")[2])
     _tulis(rp, "manifest.json", json.dumps(
         manifest(SENTINEL_RP_NAME,
                  "Model + tekstur Sentinel Void: konstruk melayang 12 kubus, "
@@ -954,12 +955,22 @@ def build_sentinel(out_path: str, version: Sequence[int] = (1, 0, 0)) -> str:
         _tulis(rp, rel, json.dumps(doc, indent=2, ensure_ascii=False))
     for rel, doc in sentinelforge.geometries().items():
         _tulis(rp, rel, json.dumps(doc, indent=2, ensure_ascii=False))
+    for rel, doc in sentinelforge.animations_files().items():
+        _tulis(rp, rel, json.dumps(doc, indent=2, ensure_ascii=False))
     for rel, (w, h, rows) in sentinelforge.tekstur().items():
         target = os.path.join(rp, rel)
         os.makedirs(os.path.dirname(target), exist_ok=True)
         write_png(target, w, h, rows)
     _tulis(rp, "textures/item_texture.json",
            json.dumps(sentinelforge.item_texture(), indent=2, ensure_ascii=False))
+    for rel, data in sentinelforge.suara().items():
+        target = os.path.join(rp, rel)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "wb") as fh:
+            fh.write(data)
+    _tulis(rp, "sounds/sound_definitions.json",
+           json.dumps(sentinelforge.sound_definitions(), indent=2,
+                      ensure_ascii=False))
     for rel, isi_lang in sentinelforge.bahasa().items():
         _tulis(rp, rel, isi_lang)
     _tulis(rp, "texts/languages.json", json.dumps(["en_US", "id_ID"], indent=2))
@@ -968,17 +979,23 @@ def build_sentinel(out_path: str, version: Sequence[int] = (1, 0, 0)) -> str:
     bp = os.path.join(staging, SENTINEL_BP)
     for sub in ("entities", "items", "recipes", "scripts"):
         os.makedirs(os.path.join(bp, sub), exist_ok=True)
-    write_png(os.path.join(bp, "pack_icon.png"), 128, 128,
-              blackhole.pack_icon(128, "inti")[2])
+    write_png(os.path.join(bp, "pack_icon.png"), 256, 256,
+              blackhole.pack_icon(256, "inti")[2])
     _tulis(bp, "manifest.json", json.dumps(
         manifest(SENTINEL_BP_NAME,
-                 f"Sentinel Void: {stat['nyawa']} HP (jinak {stat['nyawa_jinak']}), "
-                 f"damage {stat['serangan']}, melayang, kebal api & knockback. "
-                 "Memburu keluarga monster/undead/arthropod/illager (+keluarga "
-                 "add-on), membalas siapa pun yang melukai pemiliknya, tidak "
-                 "pernah menyerang player/hewan/villager. Skrip crvx:scan & "
-                 "crvx:basmi memakai Entity.remove() - melewati jalur kematian "
-                 "sehingga mob kebal /kill tetap bisa dihapus.",
+                 f"Ksatria Void BERWUJUD MANUSIA: {stat['nyawa']} HP (jinak "
+                 f"{stat['nyawa_jinak']}), damage {stat['serangan']} + efek "
+                 f"{stat['efek_serang']}, zirah HD {stat['tekstur']}, animasi "
+                 "melayang/jubah/orbit bilah. TAK BISA MATI: damage_sensor "
+                 "menolak cause override (sebab /kill), fall, void, magic, "
+                 "wither, ledakan; sisa damage disembuhkan seketika lewat "
+                 "resetToMaxValue() pada entityHurt. Memburu monster/undead/"
+                 "arthropod/illager (+keluarga add-on), membalas apa pun yang "
+                 "melukai pemiliknya, tidak menyentuh player/hewan/villager. "
+                 "Tangga pembunuh mob kebal /kill: applyDamage 1e9 'override' "
+                 "-> void y=-80 -> Entity.remove() (tanpa animasi mati & loot, "
+                 "event on-death add-on tidak jalan). Perintah: crvx:scan, "
+                 "crvx:basmi, crvx:auto, crvx:lepas.",
                  version, "data", MIN_ENGINE_SCRIPT,
                  script_entry="scripts/sentinel.js",
                  dependencies=[{"module_name": "@minecraft/server",
@@ -1114,10 +1131,27 @@ def verify_sentinel(path: str) -> Dict[str, object]:
                     if aman in fam:
                         problems.append(f"type_family memuat '{aman}' - penjaga bisa "
                                         f"jadi target mob lain secara salah")
-                if comps.get("minecraft:health", {}).get("value", 0) < 100:
-                    problems.append("health terlalu rendah untuk melawan bos add-on")
-                if comps.get("minecraft:attack", {}).get("damage", 0) < 8:
-                    problems.append("attack terlalu rendah")
+                if comps.get("minecraft:health", {}).get("value", 0) < 1000:
+                    problems.append("health < 1000: laporan lapangan v1 (240 HP) "
+                                    "mati seketika melawan The Locust")
+                atk = comps.get("minecraft:attack", {})
+                if atk.get("damage", 0) < 30:
+                    problems.append("attack < 30: tidak setara bos add-on")
+                if atk.get("effect_name") != "wither":
+                    problems.append("attack harus membawa efek wither (bentuk "
+                                    "witherskeleton.json) untuk melunakkan bos")
+                sensor = comps.get("minecraft:damage_sensor", {}).get("triggers")
+                if not isinstance(sensor, list) or not sensor:
+                    problems.append("damage_sensor.triggers harus list berisi "
+                                    "penolakan cause")
+                else:
+                    sebab = {t.get("cause"): t.get("deals_damage") for t in sensor}
+                    if sebab.get("override") != "no":
+                        problems.append("damage_sensor harus menolak cause "
+                                        "'override' (sebab yang dipakai /kill)")
+                    for wajib in ("fall", "void", "magic", "wither"):
+                        if sebab.get(wajib) != "no":
+                            problems.append(f"damage_sensor harus menolak {wajib}")
                 tam = comps.get("minecraft:tameable", {})
                 if not isinstance(tam.get("tame_items"), list) or not tam["tame_items"]:
                     problems.append("tameable.tame_items harus list berisi item")
@@ -1129,8 +1163,11 @@ def verify_sentinel(path: str) -> Dict[str, object]:
                 groups = ent.get("component_groups", {})
                 nama_group = ev.get("event") if isinstance(ev, dict) else ""
                 event_def = ent.get("events", {}).get(nama_group, {})
-                tambah = event_def.get("add", {}).get("component_groups", []) \
-                    if isinstance(event_def, dict) else []
+                langkah = (event_def.get("sequence", [event_def])
+                           if isinstance(event_def, dict) else [])
+                tambah = []
+                for st in langkah:
+                    tambah += st.get("add", {}).get("component_groups", [])
                 for g in tambah:
                     if g not in groups:
                         problems.append(f"event {nama_group} menambah group tak ada: {g}")
@@ -1207,8 +1244,12 @@ def verify_sentinel(path: str) -> Dict[str, object]:
                                 problems.append(f"ukuran kubus harus int > 0 {c['size']}")
                             uv.append(_kotak_uv(c))
                     result["cubes"] = len(uv)
-                    if len(uv) < 8:
+                    if len(uv) < 20:
                         problems.append(f"model terlalu sederhana ({len(uv)} kubus)")
+                    kurang = set(sentinelforge.BONE_MANUSIA) - set(result["bones"])
+                    if kurang:
+                        problems.append(f"tidak berwujud manusia: bone hilang "
+                                        f"{sorted(kurang)}")
                     for u, v, bw, bh in uv:
                         if u < 0 or v < 0 or u + bw > tw or v + bh > th:
                             problems.append(f"uv {(u, v)} kotak {(bw, bh)} keluar "
@@ -1226,10 +1267,93 @@ def verify_sentinel(path: str) -> Dict[str, object]:
                         if (w, h) != (tw, th):
                             problems.append(f"tekstur {w}x{h} != texture_width/height "
                                             f"{tw}x{th}")
-                        _w2, _h2, rows = read_png(data)
-                        if not any(px[3] > 0 for row in rows for px in
-                                   (row[i:i + 4] for i in range(0, len(row), 4))):
-                            problems.append("tekstur entity transparan semua")
+                        if len(data) < 50_000:
+                            problems.append(f"tekstur HD hanya {len(data)} B - "
+                                            f"detail lukisan hilang?")
+
+            # ---- 2b. animasi + controller (bentuk vex vanilla) --------------- #
+            if ce:
+                d2 = baca(ce[0])["minecraft:client_entity"]["description"]
+                peta = d2.get("animations", {})
+                ctrl = [list(c.values())[0] for c in
+                        d2.get("animation_controllers", [])]
+                ani_files = [n for n in names if "/animations/" in n
+                             and n.endswith(".animation.json")]
+                ctl_files = [n for n in names if "/animation_controllers/" in n]
+                if not peta or not ani_files:
+                    problems.append("RP tidak punya animasi (model akan kaku)")
+                else:
+                    doc_a = baca(ani_files[0])
+                    if doc_a.get("format_version") != "1.8.0":
+                        problems.append("format_version animasi harus 1.8.0 "
+                                        "(vex.animation.json)")
+                    ids = set(doc_a.get("animations", {}))
+                    for nama, ident in peta.items():
+                        if ident not in ids:
+                            problems.append(f"animasi '{nama}' -> {ident} tidak "
+                                            f"ada di berkas animasi")
+                        for bone, kanal in doc_a["animations"][ident].get(
+                                "bones", {}).items():
+                            if bone not in result["bones"]:
+                                problems.append(f"animasi {ident} menggerakkan "
+                                                f"bone tak ada: {bone}")
+                            for kunci, kf in kanal.items():
+                                if isinstance(kf, dict) and kunci != "scale":
+                                    for waktu, vec in kf.items():
+                                        if not isinstance(vec, list) or \
+                                                len(vec) != 3:
+                                            problems.append(f"keyframe {ident}/"
+                                                            f"{bone}/{kunci}@{waktu}"
+                                                            f" harus [x,y,z]")
+                if not ctrl or not ctl_files:
+                    problems.append("RP tidak punya animation_controllers")
+                else:
+                    doc_c = baca(ctl_files[0])
+                    if doc_c.get("format_version") != "1.10.0":
+                        problems.append("format_version controller harus 1.10.0")
+                    jalan = set()
+                    for c in doc_c.get("animation_controllers", {}).values():
+                        for st in c.get("states", {}).values():
+                            jalan.update(st.get("animations", []))
+                    if not jalan <= set(peta):
+                        problems.append(f"controller memanggil animasi tak "
+                                        f"terpetakan: {sorted(jalan - set(peta))}")
+                    for nama in ctrl:
+                        if nama not in doc_c.get("animation_controllers", {}):
+                            problems.append(f"controller {nama} tidak ada di berkas")
+
+            # ---- 2c. suara sintesis + event play_sound ----------------------- #
+            sd = [n for n in names if n.endswith("sounds/sound_definitions.json")]
+            if not sd:
+                problems.append("RP sounds/sound_definitions.json tidak ada")
+            else:
+                doc_s = baca(sd[0])
+                defs = doc_s.get("sound_definitions", {})
+                if len(defs) < 2:
+                    problems.append("minimal 2 definisi suara (summon & jinak)")
+                for nama, val in defs.items():
+                    for entri in val.get("sounds", []):
+                        rel_wav = f"{SENTINEL_RP}/{entri.get('name', '')}.wav"
+                        if rel_wav not in names:
+                            problems.append(f"suara {nama} -> {entri.get('name')} "
+                                            f".wav tidak ada di pack")
+                        elif zf.read(rel_wav)[:4] != b"RIFF":
+                            problems.append(f"{entri.get('name')}.wav bukan berkas "
+                                            f"WAV RIFF")
+                dipakai = []
+                for ev_def in ent.get("events", {}).values():
+                    for st in (ev_def.get("sequence", [ev_def])
+                               if isinstance(ev_def, dict) else []):
+                        ps = st.get("play_sound", {}).get("sound")
+                        if ps:
+                            dipakai.append(ps)
+                if sentinelforge.SUARA_PANGGIL not in dipakai:
+                    problems.append("event minecraft:entity_spawned harus "
+                                    "memainkan suara summon")
+                for ps in dipakai:
+                    if ps not in defs:
+                        problems.append(f"play_sound '{ps}' tak ada di "
+                                        f"sound_definitions")
 
             # ---- 3. item telur + ikon + resep -------------------------------- #
             itex = f"{SENTINEL_RP}/textures/item_texture.json"
@@ -1304,20 +1428,37 @@ def verify_sentinel(path: str) -> Dict[str, object]:
                 problems.append(f"{js_path} tidak ada")
             else:
                 js = zf.read(js_path).decode("utf-8")
+                # komentar boleh MENJELASKAN /kill @e; yang dilarang adalah kode
+                js_kode = "\n".join(b for b in js.splitlines()
+                                     if not b.strip().startswith("//"))
                 for token in ("scriptEventReceive", "crvx:scan", "crvx:basmi",
-                              "getEntities", "maxDistance", ".remove()",
-                              "world.sendMessage", "@minecraft/server"):
+                              "crvx:auto", "getEntities", "maxDistance",
+                              ".remove()", "applyDamage", "cause: \"override\"",
+                              "teleport", "VOID_Y = -80", "entityHurt",
+                              "damageSource", "runInterval", "clearRun",
+                              "minecraft:health", "resetToMaxValue",
+                              "crvx:lepas", "world.sendMessage",
+                              "@minecraft/server"):
                     if token not in js:
                         problems.append(f"skrip kehilangan '{token}'")
                 for haram in SKRIP_TERLARANG:
-                    if haram in js:
+                    if haram in js_kode:
                         problems.append(f"skrip memakai '{haram}' yang tidak ada di "
                                         f"@minecraft/server {SERVER_API} / merusak")
+                if '"crvx:sentinel"' not in js:
+                    problems.append("skrip kehilangan pelatuk pukulan Sentinel "
+                                    "(entityHurt + damagingEntity crvx:sentinel)")
+                if js_kode.index("function tangga(") > \
+                        js_kode.index("afterEvents.entityHurt.subscribe"):
+                    problems.append("tangga pembunuh harus didefinisikan sebelum "
+                                    "pelatuk entityHurt")
                 if "catch" not in js or js.count("aman(") < 8:
                     problems.append("setiap panggilan API harus lewat pembungkus "
                                     "aman() + catch (skrip mati = perintah mati)")
                 result["commands"] = [c for c in ("/scriptevent crvx:scan",
                                                   "/scriptevent crvx:basmi",
+                                                  "/scriptevent crvx:auto",
+                                                  "/scriptevent crvx:lepas",
                                                   "/scriptevent crvx:bantuan")
                                       if c.split()[-1] in js]
     except (zipfile.BadZipFile, OSError, KeyError, ValueError, AssertionError,

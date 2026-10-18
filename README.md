@@ -144,6 +144,6 @@ saat preset diterapkan, jadi seluruh alur bisa diuji dari ujung ke ujung.
 |---|---|
 | `addon/CRVX_FPS_Booster.mcaddon` | RP fog/awan hemat + BP preset gamerule + AutoGovernor v3 (skrip `@minecraft/server` 2.0.0, HUD & pemutus arus). Kontrol: jongkok + pakai item, atau `/scriptevent crvx:…` |
 | `addon/CRVX_Void_Arsenal.mcaddon` | 4 armor 3D + pedang 3D (model & tekstur buatan sendiri di kerangka pemain vanilla), resep survival netherite + echo shard |
-| `addon/CRVX_Sentinel.mcaddon` | Sentinel Void: penjaga melayang (240 HP / damage 16) yang memburu keluarga monster/undead/arthropod/illager (+keluarga add-on), membalas apa pun yang melukai pemiliknya, tidak menyentuh player/hewan/villager; plus skrip `crvx:scan` & `crvx:basmi` yang menghapus mob kebal `/kill` lewat `Entity.remove()` |
+| `addon/CRVX_Sentinel.mcaddon` | Ksatria Void **berwujud manusia** (1000 HP, damage 40 + wither IV, tekstur HD 2048², animasi, suara sintesis). Tak bisa mati: `damage_sensor` menolak cause `override` milik `/kill` + heal instan `resetToMaxValue()`; membunuh mob kebal lewat tangga `applyDamage 1e9 -> void -> Entity.remove()`; perintah `crvx:scan/basmi/auto/lepas` |
 
 Bangun ulang: `python3 -m crvx.cli addon|arsenal|sentinel`. Pasang: kirim berkas ke HP, buka, lalu aktifkan RP+BP di pengaturan dunia.

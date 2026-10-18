@@ -547,15 +547,21 @@ def cmd_sentinel(args: argparse.Namespace) -> int:
     stat = sentinelforge.statistik()
     print()
     dim(f"  entity        : {stat['entity']} - {stat['nama']}")
+    dim(f"  wujud         : {stat['wujud']}")
     dim(f"  tempur        : {stat['nyawa']} HP (jinak {stat['nyawa_jinak']}), "
-        f"damage {stat['serangan']}, speed {stat['kecepatan']} (melayang)")
+        f"damage {stat['serangan']} + efek {stat['efek_serang']}, "
+        f"speed {stat['kecepatan']} (melayang)")
     pem = stat["pembanding"]
     dim(f"  pembanding    : iron golem {pem['iron_golem']['nyawa']} HP / "
-        f"{pem['iron_golem']['serangan']} dmg, wither skeleton "
-        f"{pem['wither_skeleton']['nyawa']} HP / "
-        f"{pem['wither_skeleton']['serangan']} dmg")
+        f"{pem['iron_golem']['serangan']} dmg, warden "
+        f"{pem['warden']['nyawa']} HP / {pem['warden']['serangan']} dmg")
     dim(f"  model         : {len(result['bones'])} bone, {result['cubes']} kubus, "
-        f"tekstur 64x64 buatan sendiri")
+        f"tekstur {stat['tekstur']} + animasi melayang/jubah/orbit")
+    dim(f"  suara         : {', '.join(stat['suara'])} - disintesis sendiri")
+    dim(f"  perisai       : damage_sensor menolak {len(stat['tolak_cause'])} cause "
+        f"(termasuk 'override' milik /kill);")
+    dim(f"                  sisa damage disembuhkan seketika: "
+        f"{stat['sembuh_instan']}")
     dim(f"  diburu        : {', '.join(result['buruan'])}")
     dim(f"  tidak disentuh: {', '.join(stat['keluarga_aman'][:8])}, ...")
     dim(f"  komponen resmi: {len(result['components'])} terverifikasi "
@@ -569,7 +575,13 @@ def cmd_sentinel(args: argparse.Namespace) -> int:
     dim("          atau /summon crvx:sentinel (butuh Cheats).")
     dim("Jinakkan: klik kanan Sentinel dengan echo shard -> ikut & melindungi.")
     print()
-    dim("Lawan The Locust (mob yang kebal /kill):")
+    dim("Kenapa Sentinel v3 tak terkalahkan & bisa membunuh yang kebal /kill:")
+    dim("  - /kill memakai cause 'override'; damage_sensor Sentinel menolak")
+    dim("    cause itu mentah-mentah, dan HP-nya dipulihkan tiap terkena pukulan.")
+    dim("  - Serangan Sentinel membawa tangga: damage 1e9 'override' -> buang ke")
+    dim("    void y=-80 -> Entity.remove() (tanpa animasi mati & loot, sehingga")
+    dim("    event on-death / respawn add-on tidak pernah dijalankan).")
+    dim("Perintah:")
     for c in stat["perintah"]:
         dim(f"  {c}")
     dim("  crvx:scan mencetak typeId semua entity dalam 32 blok, crvx:basmi")

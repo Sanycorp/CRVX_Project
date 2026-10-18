@@ -1130,7 +1130,7 @@ class TestSentinelForge(unittest.TestCase):
         cls.ent = sentinelforge.entity_bp()["minecraft:entity"]
         cls.comp = cls.ent["components"]
         cls.ce = sentinelforge.client_entity()["minecraft:client_entity"]["description"]
-        cls.geo, cls.rows = sentinelforge.geo_sentinel()
+        cls.geo, cls.rows = sentinelforge.geo_ksatria()
         cls.js = sentinelforge.skrip()
 
     # ---------------- behavior pack: komponen ---------------- #
@@ -1207,8 +1207,14 @@ class TestSentinelForge(unittest.TestCase):
         self.assertEqual(self.comp["minecraft:behavior.owner_hurt_by_target"],
                          {"priority": 0})
         event = self.comp["minecraft:tameable"]["tame_event"]["event"]
-        groups = self.ent["events"][event]["add"]["component_groups"]
+        langkah = self.ent["events"][event]["sequence"]
+        groups = langkah[0]["add"]["component_groups"]
         self.assertTrue(groups)
+        self.assertEqual(langkah[1]["play_sound"]["sound"], self.s.SUARA_JINAK)
+        self.assertEqual(
+            self.ent["events"]["minecraft:entity_spawned"]["sequence"][0]
+            ["play_sound"]["sound"], self.s.SUARA_PANGGIL,
+            "summon harus bersuara - feedback saat KSATRIA muncul")
         for g in groups:
             self.assertIn(g, self.ent["component_groups"])
             self.assertIn("minecraft:is_tamed", self.ent["component_groups"][g])
@@ -1221,7 +1227,7 @@ class TestSentinelForge(unittest.TestCase):
         blok = self.geo["minecraft:geometry"][0]
         tw, th = (blok["description"]["texture_width"],
                   blok["description"]["texture_height"])
-        self.assertEqual((tw, th), (64, 64))
+        self.assertEqual((tw, th), (self.s.TEKS_SIZE, self.s.TEKS_SIZE))
         bones = blok["bones"]
         nama = [b["name"] for b in bones]
         self.assertEqual(len(set(nama)), len(nama))
@@ -1238,8 +1244,11 @@ class TestSentinelForge(unittest.TestCase):
                 w, h, d = c["size"]
                 u, v = c["uv"]
                 kotak.append((u, v, 2 * (w + d), h + d))
-        self.assertGreaterEqual(len(kotak), 12,
-                                "inti + mata + jantung + halo + mahkota + 2 bilah")
+        self.assertGreaterEqual(len(kotak), 30,
+                                "ksatria lengkap: zirah, pelat, tanduk, jubah, "
+                                "bilah - bukan konstruk melayang sederhana")
+        for bone in self.s.BONE_MANUSIA:
+            self.assertIn(bone, nama, f"tidak berwujud manusia: tanpa {bone}")
         for u, v, bw, bh in kotak:
             self.assertGreaterEqual(u, 0)
             self.assertLessEqual(u + bw, tw)
@@ -1269,10 +1278,12 @@ class TestSentinelForge(unittest.TestCase):
     def test_tekstur_ukuran_benar(self):
         peta = self.s.tekstur()
         self.assertIn(f"{self.s.TEKS_ENTITAS}.png", peta)
-        self.assertEqual(peta[f"{self.s.TEKS_ENTITAS}.png"][:2], (64, 64))
-        self.assertEqual(len(self.rows), 64)
-        self.assertTrue(all(len(r) == 64 * 4 for r in self.rows))
-        alpha = {r[x * 4 + 3] for r in self.rows for x in range(64)}
+        self.assertEqual(peta[f"{self.s.TEKS_ENTITAS}.png"][:2],
+                         (self.s.TEKS_SIZE, self.s.TEKS_SIZE))
+        self.assertEqual(len(self.rows), self.s.TEKS_SIZE)
+        self.assertTrue(all(len(r) == self.s.TEKS_SIZE * 4 for r in self.rows))
+        alpha = {r[x * 4 + 3] for r in self.rows[:400]
+                 for x in range(0, self.s.TEKS_SIZE, 4)}
         self.assertIn(255, alpha, "tekstur entity harus punya piksel opak")
         w, h, egg = self.s.ikon_telur(16)
         self.assertEqual((w, h), (16, 16))
@@ -1331,10 +1342,14 @@ class TestSentinelForge(unittest.TestCase):
         self.assertIn(".remove()", self.js,
                       "Entity.remove() = satu-satunya jalan melewati kebal-mati")
         self.assertIn('from "@minecraft/server"', self.js)
+        kode = "\n".join(b for b in self.js.splitlines()
+                          if not b.strip().startswith("//"))
         for terlarang in ("Entity.kill(", ".isPlayer(", "chatSend", "kill @e",
                           "@minecraft/server-ui", "beforeEvents"):
-            self.assertNotIn(terlarang, self.js,
+            self.assertNotIn(terlarang, kode,
                              f"{terlarang} tidak ada di @minecraft/server 2.0.0")
+        self.assertIn("/kill @e gagal", self.js,
+                      "komentar justru harus menjelaskan kenapa /kill gagal")
         for wajib in ("scriptEventReceive", "crvx:scan", "crvx:basmi",
                       "crvx:bantuan", "getEntities", "maxDistance",
                       "world.sendMessage", "system.runTimeout"):
@@ -1353,6 +1368,129 @@ class TestSentinelForge(unittest.TestCase):
         self.assertIn("AKU = [\"minecraft:\", \"crvx:\"]", self.js)
         self.assertIn("BATAS = 64", self.js, "radius dibatasi agar tidak nyapu dunia")
 
+    # ---------------- v3: perisai tak bisa mati, suara, animasi -------------- #
+    def test_perisai_menolak_cause_kill(self):
+        sensor = self.comp["minecraft:damage_sensor"]["triggers"]
+        sebab = {t["cause"]: t["deals_damage"] for t in sensor}
+        self.assertEqual(sebab.get("override"), "no",
+                         "/kill memakai cause override - wajib ditolak")
+        for c in self.s.CAUSE_DITOLAK:
+            self.assertEqual(sebab.get(c), "no", f"cause {c} harus ditolak")
+        self.assertEqual(len(sensor), len(self.s.CAUSE_DITOLAK))
+        # lapis kedua: heal instan di skrip
+        self.assertIn("resetToMaxValue()", self.js)
+        i = self.js.index('!== "crvx:sentinel") return;',
+                          self.js.index("zirah lapis 2"))
+        self.assertGreater(i, 0, "subscriber heal harus khusus Sentinel")
+
+    def test_suara_sintesis_resmi(self):
+        import wave as _wave
+        import io as _io
+        suara = self.s.suara()
+        self.assertEqual(len(suara), 2)
+        for rel, data in suara.items():
+            self.assertTrue(rel.endswith(".wav"))
+            self.assertEqual(data[:4], b"RIFF", f"{rel} bukan WAV")
+            w = _wave.open(_io.BytesIO(data))
+            self.assertEqual(w.getframerate(), 48000)
+            self.assertGreater(w.getnframes() / 48000, 1.0,
+                               "suara harus terdengar utuh, bukan klik")
+        defs = self.s.sound_definitions()["sound_definitions"]
+        self.assertIn(self.s.SUARA_PANGGIL, defs)
+        self.assertIn(self.s.SUARA_JINAK, defs)
+        for nama, val in defs.items():
+            for entri in val["sounds"]:
+                self.assertTrue(entri["name"].startswith("sounds/"))
+
+    def test_animasi_dan_controller_bentuk_vanilla(self):
+        ani = self.s.animasi()
+        self.assertEqual(ani["format_version"], "1.8.0",
+                         "bentuk vex.animation.json vanilla")
+        for ident, blok in ani["animations"].items():
+            self.assertTrue(blok["loop"])
+            nama_bone = [b["name"] for b in
+                         self.geo["minecraft:geometry"][0]["bones"]]
+            for bone, kanal in blok["bones"].items():
+                self.assertIn(bone, nama_bone)
+                for nama_kanal, keyframe in kanal.items():
+                    if nama_kanal == "scale":
+                        continue
+                    for waktu, vec in keyframe.items():
+                        self.assertEqual(len(vec), 3,
+                                         f"{ident}/{bone}/{nama_kanal}@{waktu} "
+                                         f"harus [x,y,z]")
+        ctl = self.s.controllers()
+        self.assertEqual(ctl["format_version"], "1.10.0")
+        jalan = set()
+        for c in ctl["animation_controllers"].values():
+            self.assertEqual(c["initial_state"], "default")
+            for st in c["states"].values():
+                jalan.update(st["animations"])
+        peta = self.s.client_entity()["minecraft:client_entity"][
+            "description"]["animations"]
+        self.assertTrue(jalan <= set(peta),
+                        "controller hanya boleh memanggil animasi terpetakan")
+        for ident in peta.values():
+            self.assertIn(ident, ani["animations"])
+
+    # ---------------- v2.0: tangga pembunuh mob kebal /kill ---------------- #
+    def test_tangga_pembunuh_tiga_anak_tangga(self):
+        # 1) damage absolut dengan cause resmi paling kuat
+        self.assertIn("applyDamage(PROBE, { cause: \"override\" })", self.js)
+        self.assertIn("const PROBE = 1000000000", self.js,
+                      "probe harus menembus HP raksasa add-on")
+        # 2) void: enum EntityDamageCause 2.0.0 TIDAK punya 'void', jadi mob
+        #    dilempar ke y=-80 supaya void damage datang dari engine
+        self.assertIn("const VOID_Y = -80", self.js)
+        self.assertIn("e.teleport({ x: p.x, y: VOID_Y, z: p.z })", self.js)
+        # 3) remove(): tanpa animasi mati & loot -> on-death add-on tidak jalan
+        self.assertIn("p.e.remove()", self.js)
+        # urutan anak tangga: cekPantau(remove) -> tanggaVoid(void) -> tangga
+        i_cek = self.js.index("function cekPantau(")
+        i_void = self.js.index("function tanggaVoid(")
+        i_tg = self.js.index("function tangga(")
+        self.assertTrue(i_cek < i_void < i_tg,
+                        "urutan definisi tangga: remove -> void -> damage")
+        self.assertIn("y: VOID_Y", self.js[i_void:i_tg])
+        self.assertIn("tanggaVoid(e, label);", self.js[i_tg:],
+                      "tangga harus memanggil anak tangga void saat kebal")
+        self.assertIn("p.e.remove()", self.js[:i_void])
+        # yang lolos void dicek berkala walau daemon auto mati
+        self.assertIn("if (pantau.length) cekPantau();", self.js)
+        self.assertIn("system.runInterval(function () {", self.js)
+
+    def test_pelatuk_pukulan_sentinel(self):
+        self.assertIn("world.afterEvents.entityHurt.subscribe", self.js)
+        self.assertIn("ev.damageSource.damagingEntity", self.js)
+        self.assertIn('!== "crvx:sentinel") return;', self.js,
+                      "hanya pukulan Sentinel yang memicu tangga otomatis")
+        self.assertIn("ev.hurtEntity", self.js)
+        self.assertIn(") === 0;", self.js,
+                      "damage 0 = pukulan dinolkan mob kebal -> naik tangga")
+        # mob vanilla yang TIDAK kebal tetap bertarung normal (tanpa tangga)
+        self.assertIn("dinolkan && musuhVanilla(t)", self.js)
+
+    def test_daemon_auto_dan_forensik(self):
+        self.assertIn("let autoId = null;", self.js, "auto harus mati bawaan")
+        self.assertIn("crvx:auto", self.js)
+        self.assertIn("system.clearRun(autoId)", self.js)
+        self.assertIn("maxDistance: 48", self.js, "radius daemon hemat CPU")
+        self.assertIn(", 80);", self.js, "4 detik = sepi beban untuk POCO M3 Pro")
+        # scan kini melaporkan HP: forensik kenapa /kill gagal
+        self.assertIn('getComponent("minecraft:health")', self.js)
+        self.assertIn("c.currentValue", self.js)
+        self.assertIn("hp\" + Math.round(h)", self.js)
+
+    def test_tangga_tidak_menyentuh_pemain_dan_sentinel(self):
+        self.assertIn('AKU = ["minecraft:", "crvx:"]', self.js)
+        self.assertIn("if (!asing(t)) continue;", self.js,
+                      "daemon wajib melewatkan vanilla + CRVX")
+        self.assertIn("if (!target) continue;", self.js,
+                      "sapu wajib melewatkan vanilla + CRVX")
+        self.assertIn("MUSUH_VANILLA", self.js,
+                      "mode 'semua' hanya boleh menambah musuh vanilla kebal")
+        self.assertIn("function tanggaKebal(e)", self.js)
+
     # ---------------- build, verify, statistik ---------------- #
     def test_build_dan_verify_sentinel(self):
         from crvx.addonforge import build_sentinel, verify_sentinel
@@ -1369,6 +1507,14 @@ class TestSentinelForge(unittest.TestCase):
                           hasil["entries"])
             self.assertIn(f"{self.af.SENTINEL_RP}/entity/crvx_sentinel.entity.json",
                           hasil["entries"])
+            self.assertGreater(hasil["size_bytes"], 1_000_000,
+                               "protest pengguna: pack tidak boleh kalah konten "
+                               "dari add-on 30 MB - semua byte di sini fungsional")
+            for wajib in (f"{self.af.SENTINEL_RP}/sounds/sound_definitions.json",
+                          f"{self.af.SENTINEL_RP}/sounds/crvx_sentinel_summon.wav",
+                          f"{self.af.SENTINEL_RP}/animations/"
+                          f"crvx_sentinel.animation.json"):
+                self.assertIn(wajib, hasil["entries"])
             # verifier harus MENOLAK komponen bikinan (minecraft:gravity)
             import zipfile as _zip
             rusak = os.path.join(tmp, "rusak.mcaddon")
@@ -1416,8 +1562,11 @@ class TestSentinelForge(unittest.TestCase):
         pem = stat["pembanding"]
         self.assertGreater(stat["nyawa"], pem["iron_golem"]["nyawa"])
         self.assertGreater(stat["serangan"], pem["iron_golem"]["serangan"])
-        self.assertLess(stat["nyawa"], pem["warden"]["nyawa"],
-                        "tidak boleh sekuat warden: tetap bisa dikalahkan")
+        self.assertGreaterEqual(stat["nyawa"], 1000,
+                                "v1 (240 HP) mati seketika; v3 wajib >= 1000")
+        self.assertGreater(stat["serangan"], pem["warden"]["serangan"])
+        self.assertIn("manusia", stat["wujud"])
+        self.assertEqual(stat["tekstur"], "2048x2048 (UV skala 16x)")
         self.assertTrue(stat["melayang"] and stat["kebal_api"])
         self.assertEqual(stat["kebal_knockback"], 1.0)
         self.assertIn("/scriptevent crvx:basmi 24", stat["perintah"])
